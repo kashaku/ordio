@@ -1,14 +1,18 @@
 import {
+  ArrowDown,
   ArrowUpRight,
+  ArrowUp,
   CheckCircle2,
   Clock,
   Copy,
+  Download,
   Eye,
   Grid3X3,
   Image,
   Layers,
   MapPin,
   MousePointer2,
+  Package,
   Plus,
   QrCode,
   Redo2,
@@ -24,7 +28,7 @@ import {
   ZoomOut,
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
-import type { MouseEvent, ReactNode } from 'react';
+import type { ChangeEvent, MouseEvent, ReactNode } from 'react';
 import { useMemo, useState } from 'react';
 
 import { initializeOrdioData, writeOrdioData } from '../storage/ordioStorage';
@@ -108,6 +112,15 @@ function createExtraModule(sortOrder: number): StoreExtraModule {
   };
 }
 
+function getModuleImageValue(module: StoreExtraModule, index: number): string {
+  return module.images[index] ?? '';
+}
+
+function getModuleProductPrice(module: StoreExtraModule): string {
+  const match = module.content.match(/¥\s?(\d+(?:\.\d+)?)/);
+  return match ? `¥${match[1]}` : '¥--';
+}
+
 function createStoreInfoNode(storeId: string): EditorNode {
   return {
     id: `node-store-info-${Date.now()}`,
@@ -165,6 +178,30 @@ function createMenuFromTemplate(storeId: string, template: MenuTemplate, sourceM
     dishes: sourceMenu.dishes,
     createdAt: now,
     updatedAt: now,
+  };
+}
+
+function createDish(storeId: string, categoryId: string): Dish {
+  return {
+    id: `dish-${Date.now()}`,
+    storeId,
+    categoryId,
+    name: '新菜品',
+    price: 18,
+    image: '',
+    description: '填写菜品描述、口味和搭配建议。',
+    tags: ['新品'],
+    sales: 0,
+    specs: [],
+  };
+}
+
+function createCategory(storeId: string, sortOrder: number) {
+  return {
+    id: `cat-${Date.now()}`,
+    storeId,
+    name: '新分类',
+    sortOrder,
   };
 }
 
@@ -454,6 +491,50 @@ export function MerchantPage() {
     );
   }
 
+  function moveModule(moduleId: string, direction: -1 | 1): void {
+    const orderedModules = [...store.extraModules].sort((left, right) => left.sortOrder - right.sortOrder);
+    const currentIndex = orderedModules.findIndex((module) => module.id === moduleId);
+    const nextIndex = currentIndex + direction;
+
+    if (currentIndex < 0 || nextIndex < 0 || nextIndex >= orderedModules.length) {
+      return;
+    }
+
+    const nextModules = [...orderedModules];
+    const [movingModule] = nextModules.splice(currentIndex, 1);
+    if (!movingModule) {
+      return;
+    }
+    nextModules.splice(nextIndex, 0, movingModule);
+
+    updateStore(
+      {
+        extraModules: nextModules.map((module, index) => ({ ...module, sortOrder: index + 1 })),
+      },
+      '内容模块顺序已保存',
+    );
+  }
+
+  function downloadQrCode(): void {
+    const svg = document.getElementById('merchant-qrcode-svg');
+    if (!(svg instanceof SVGElement)) {
+      setSavedMessage('二维码尚未生成');
+      return;
+    }
+
+    const svgText = new XMLSerializer().serializeToString(svg);
+    const blob = new Blob([svgText], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${store.id}-qrcode.svg`;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    setSavedMessage('二维码已下载');
+  }
+
   function createEmptyMenu(): void {
     const nextMenu = createBlankMenu(store.id);
 
@@ -495,6 +576,92 @@ export function MerchantPage() {
         ),
       }),
       '二维码已发布，顾客可扫码进入菜单',
+    );
+  }
+
+  function updateMenu(updater: (currentMenu: Menu) => Menu, message: string): void {
+    persist(
+      (current) => ({
+        ...current,
+        menus: current.menus.map((item) =>
+          item.id === menu.id ? ensureStoreInfoNode({ ...updater(item), updatedAt: new Date().toISOString() }, store.id) : item,
+        ),
+      }),
+      message,
+    );
+  }
+
+  function addCategory(): void {
+    updateMenu(
+      (currentMenu) => ({
+        ...currentMenu,
+        categories: [...currentMenu.categories, createCategory(store.id, currentMenu.categories.length + 1)],
+      }),
+      '已新增菜品分类',
+    );
+  }
+
+  function updateCategory(categoryId: string, name: string): void {
+    updateMenu(
+      (currentMenu) => ({
+        ...currentMenu,
+        categories: currentMenu.categories.map((category) =>
+          category.id === categoryId ? { ...category, name } : category,
+        ),
+      }),
+      '分类已保存',
+    );
+  }
+
+  function addDish(categoryId: string): void {
+    updateMenu(
+      (currentMenu) => ({
+        ...currentMenu,
+        dishes: [...currentMenu.dishes, createDish(store.id, categoryId)],
+      }),
+      '已新增菜品',
+    );
+  }
+
+  function updateDish(dishId: string, patch: Partial<Dish>): void {
+    updateMenu(
+      (currentMenu) => ({
+        ...currentMenu,
+        dishes: currentMenu.dishes.map((dish) => (dish.id === dishId ? { ...dish, ...patch } : dish)),
+      }),
+      '菜品已保存',
+    );
+  }
+
+  function deleteDish(dishId: string): void {
+    updateMenu(
+      (currentMenu) => ({
+        ...currentMenu,
+        dishes: currentMenu.dishes.filter((dish) => dish.id !== dishId),
+      }),
+      '已删除菜品',
+    );
+  }
+
+  function moveDish(dishId: string, direction: -1 | 1): void {
+    const currentIndex = menu.dishes.findIndex((dish) => dish.id === dishId);
+    const nextIndex = currentIndex + direction;
+
+    if (currentIndex < 0 || nextIndex < 0 || nextIndex >= menu.dishes.length) {
+      return;
+    }
+
+    updateMenu(
+      (currentMenu) => {
+        const nextDishes = [...currentMenu.dishes];
+        const [movingDish] = nextDishes.splice(currentIndex, 1);
+        if (!movingDish) {
+          return currentMenu;
+        }
+        nextDishes.splice(nextIndex, 0, movingDish);
+        return { ...currentMenu, dishes: nextDishes };
+      },
+      '菜品顺序已保存',
     );
   }
 
@@ -588,6 +755,7 @@ export function MerchantPage() {
               store={store}
               onAddModule={addModule}
               onDeleteModule={deleteModule}
+              onMoveModule={moveModule}
               onUpdateModule={updateModule}
               onUpdateStore={updateStore}
             />
@@ -601,7 +769,13 @@ export function MerchantPage() {
               templates={data.templates}
               onCreateBlankMenu={createEmptyMenu}
               onCreateTemplateMenu={createTemplateMenu}
+              onAddCategory={addCategory}
+              onAddDish={addDish}
+              onDeleteDish={deleteDish}
+              onMoveDish={moveDish}
               onSelectMenu={setSelectedMenuId}
+              onUpdateCategory={updateCategory}
+              onUpdateDish={updateDish}
             />
           ) : null}
 
@@ -632,7 +806,13 @@ export function MerchantPage() {
           ) : null}
 
           {activeStep === 'publish' ? (
-            <PublishPanel customerUrl={customerUrl} menu={menu} store={store} onPublish={publishQrCode} />
+            <PublishPanel
+              customerUrl={customerUrl}
+              menu={menu}
+              store={store}
+              onDownloadQrCode={downloadQrCode}
+              onPublish={publishQrCode}
+            />
           ) : null}
         </section>
 
@@ -666,6 +846,7 @@ interface StoreEditorProps {
   onUpdateModule: (moduleId: string, patch: Partial<StoreExtraModule>) => void;
   onAddModule: () => void;
   onDeleteModule: (moduleId: string) => void;
+  onMoveModule: (moduleId: string, direction: -1 | 1) => void;
 }
 
 function StoreEditor({
@@ -673,6 +854,7 @@ function StoreEditor({
   store,
   onAddModule,
   onDeleteModule,
+  onMoveModule,
   onUpdateModule,
   onUpdateStore,
 }: StoreEditorProps) {
@@ -706,6 +888,7 @@ function StoreEditor({
             value={store.businessHours}
             onChange={(value) => onUpdateStore({ businessHours: value })}
           />
+          <TextField label="封面图片地址" value={store.cover} onChange={(value) => onUpdateStore({ cover: value })} />
           <TextField label="电话" value={store.phone} onChange={(value) => onUpdateStore({ phone: value })} />
           <TextField label="地址" value={store.address} onChange={(value) => onUpdateStore({ address: value })} />
           <TextareaField
@@ -734,22 +917,52 @@ function StoreEditor({
         </div>
 
         <div className="mt-4 space-y-3">
-          {modules.map((module) => (
+          {modules.map((module, index) => (
             <div key={module.id} className="rounded-lg border border-ink/10 bg-rice p-4">
               <div className="mb-3 flex items-center justify-between">
-                <span className="rounded-md bg-porcelain px-2 py-1 text-xs font-medium text-ink/60">
-                  {getModuleTypeLabel(module)}
-                </span>
-                <button
-                  className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-clay hover:bg-clay/10"
-                  type="button"
-                  onClick={() => onDeleteModule(module.id)}
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                  删除
-                </button>
+                <div className="flex items-center gap-2">
+                  <span className="rounded-md bg-porcelain px-2 py-1 text-xs font-medium text-ink/60">
+                    {getModuleTypeLabel(module)}
+                  </span>
+                  <span className="text-xs text-ink/40">排序 {index + 1}</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <IconButton
+                    disabled={index === 0}
+                    label="上移"
+                    onClick={() => onMoveModule(module.id, -1)}
+                  >
+                    <ArrowUp className="h-3.5 w-3.5" />
+                  </IconButton>
+                  <IconButton
+                    disabled={index === modules.length - 1}
+                    label="下移"
+                    onClick={() => onMoveModule(module.id, 1)}
+                  >
+                    <ArrowDown className="h-3.5 w-3.5" />
+                  </IconButton>
+                  <button
+                    className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-clay hover:bg-clay/10"
+                    type="button"
+                    onClick={() => onDeleteModule(module.id)}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    删除
+                  </button>
+                </div>
               </div>
-              <div className="grid grid-cols-[180px_1fr] gap-3">
+              <div className="grid grid-cols-[160px_180px_1fr] gap-3">
+                <SelectField
+                  label="类型"
+                  value={module.type}
+                  options={[
+                    { label: '店铺故事', value: 'story' },
+                    { label: '周边产品', value: 'product' },
+                    { label: '品牌介绍', value: 'brand' },
+                    { label: '图文模块', value: 'imageText' },
+                  ]}
+                  onChange={(value) => onUpdateModule(module.id, { type: value as StoreExtraModule['type'] })}
+                />
                 <TextField
                   label="标题"
                   value={module.title}
@@ -761,6 +974,29 @@ function StoreEditor({
                   onChange={(value) => onUpdateModule(module.id, { content: value })}
                 />
               </div>
+              <div className="mt-3 grid grid-cols-[1fr_1fr_auto] gap-3">
+                <TextField
+                  label="图片 1"
+                  value={getModuleImageValue(module, 0)}
+                  onChange={(value) => onUpdateModule(module.id, { images: [value, getModuleImageValue(module, 1)] })}
+                />
+                <TextField
+                  label="图片 2"
+                  value={getModuleImageValue(module, 1)}
+                  onChange={(value) => onUpdateModule(module.id, { images: [getModuleImageValue(module, 0), value] })}
+                />
+                <div className="flex items-end">
+                  <button
+                    className="rounded-md bg-porcelain px-3 py-2 text-sm font-medium text-ink hover:bg-white"
+                    type="button"
+                    onClick={() => onUpdateModule(module.id, { images: [] })}
+                  >
+                    清空图片
+                  </button>
+                </div>
+              </div>
+              {module.type === 'product' ? <ModuleProductPreview module={module} /> : null}
+              {module.type === 'imageText' || module.images.some(Boolean) ? <ModuleImagePreview module={module} /> : null}
             </div>
           ))}
         </div>
@@ -774,20 +1010,35 @@ interface MenuManagerProps {
   menus: Menu[];
   selectedTemplateId: string | null;
   templates: OrdioData['templates'];
+  onAddCategory: () => void;
+  onAddDish: (categoryId: string) => void;
   onCreateBlankMenu: () => void;
   onCreateTemplateMenu: (templateId: string) => void;
+  onDeleteDish: (dishId: string) => void;
+  onMoveDish: (dishId: string, direction: -1 | 1) => void;
   onSelectMenu: (menuId: string) => void;
+  onUpdateCategory: (categoryId: string, name: string) => void;
+  onUpdateDish: (dishId: string, patch: Partial<Dish>) => void;
 }
 
 function MenuManager({
   menu,
   menus,
+  onAddCategory,
+  onAddDish,
   onCreateBlankMenu,
   onCreateTemplateMenu,
+  onDeleteDish,
+  onMoveDish,
   onSelectMenu,
+  onUpdateCategory,
+  onUpdateDish,
   selectedTemplateId,
   templates,
 }: MenuManagerProps) {
+  const sortedCategories = [...menu.categories].sort((left, right) => left.sortOrder - right.sortOrder);
+  const defaultCategoryId = sortedCategories[0]?.id ?? '';
+
   return (
     <section className="space-y-5">
       <div className="rounded-lg border border-ink/10 bg-porcelain p-5 shadow-sm">
@@ -891,6 +1142,87 @@ function MenuManager({
               </div>
             </article>
           ))}
+        </div>
+      </div>
+
+      <div className="rounded-lg border border-ink/10 bg-porcelain p-5 shadow-sm">
+        <div className="flex items-start justify-between">
+          <div>
+            <h2 className="text-xl font-semibold">菜品管理</h2>
+            <p className="mt-1 text-sm text-ink/55">自由新增、编辑、删除、排序菜品，手机预览会同步更新。</p>
+          </div>
+          <button
+            className="inline-flex items-center gap-2 rounded-md bg-ink px-3 py-2 text-sm font-semibold text-porcelain hover:bg-ink/90"
+            type="button"
+            onClick={onAddCategory}
+          >
+            <Plus className="h-4 w-4" />
+            新增分类
+          </button>
+        </div>
+
+        <div className="mt-5 space-y-4">
+          {sortedCategories.map((category) => {
+            const categoryDishes = menu.dishes.filter((dish) => dish.categoryId === category.id);
+
+            return (
+              <section key={category.id} className="rounded-lg border border-ink/10 bg-rice p-4">
+                <div className="grid grid-cols-[220px_1fr_auto] items-end gap-3">
+                  <TextField
+                    label="分类名称"
+                    value={category.name}
+                    onChange={(value) => onUpdateCategory(category.id, value)}
+                  />
+                  <div className="text-sm text-ink/50">{categoryDishes.length} 个菜品</div>
+                  <button
+                    className="inline-flex items-center gap-2 rounded-md bg-porcelain px-3 py-2 text-sm font-semibold text-ink hover:bg-white"
+                    type="button"
+                    onClick={() => onAddDish(category.id)}
+                  >
+                    <Plus className="h-4 w-4" />
+                    新增菜品
+                  </button>
+                </div>
+
+                <div className="mt-4 space-y-3">
+                  {categoryDishes.map((dish) => {
+                    const globalIndex = menu.dishes.findIndex((item) => item.id === dish.id);
+
+                    return (
+                      <DishEditorRow
+                        key={dish.id}
+                        categories={sortedCategories}
+                        dish={dish}
+                        isFirst={globalIndex === 0}
+                        isLast={globalIndex === menu.dishes.length - 1}
+                        onDelete={() => onDeleteDish(dish.id)}
+                        onMoveDown={() => onMoveDish(dish.id, 1)}
+                        onMoveUp={() => onMoveDish(dish.id, -1)}
+                        onUpdate={(patch) => onUpdateDish(dish.id, patch)}
+                      />
+                    );
+                  })}
+                </div>
+              </section>
+            );
+          })}
+
+          {sortedCategories.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-ink/20 p-5 text-sm text-ink/55">
+              当前菜单还没有分类。先新增分类，再添加菜品。
+            </div>
+          ) : null}
+
+          {sortedCategories.length > 0 && menu.dishes.length === 0 ? (
+            <button
+              className="inline-flex items-center gap-2 rounded-md bg-citrus px-4 py-3 text-sm font-semibold text-ink"
+              type="button"
+              onClick={() => onAddDish(defaultCategoryId)}
+            >
+              <Plus className="h-4 w-4" />
+              添加第一个菜品
+            </button>
+          ) : null}
         </div>
       </div>
     </section>
@@ -1443,10 +1775,11 @@ interface PublishPanelProps {
   customerUrl: string;
   menu: Menu;
   store: StoreModel;
+  onDownloadQrCode: () => void;
   onPublish: () => void;
 }
 
-function PublishPanel({ customerUrl, menu, onPublish, store }: PublishPanelProps) {
+function PublishPanel({ customerUrl, menu, onDownloadQrCode, onPublish, store }: PublishPanelProps) {
   return (
     <section className="rounded-lg border border-ink/10 bg-porcelain p-5 shadow-sm">
       <h2 className="text-xl font-semibold">发布二维码</h2>
@@ -1455,7 +1788,7 @@ function PublishPanel({ customerUrl, menu, onPublish, store }: PublishPanelProps
       <div className="mt-5 grid grid-cols-[240px_1fr] gap-5">
         <div className="rounded-lg bg-rice p-5">
           <div className="flex justify-center rounded-lg bg-porcelain p-5">
-            <QRCodeSVG value={customerUrl} size={176} marginSize={1} />
+            <QRCodeSVG id="merchant-qrcode-svg" value={customerUrl} size={176} marginSize={1} />
           </div>
         </div>
         <div className="space-y-4">
@@ -1475,6 +1808,14 @@ function PublishPanel({ customerUrl, menu, onPublish, store }: PublishPanelProps
           >
             <QrCode className="h-4 w-4" />
             发布二维码
+          </button>
+          <button
+            className="ml-3 inline-flex items-center gap-2 rounded-md border border-ink/10 bg-porcelain px-4 py-3 text-sm font-semibold text-ink hover:bg-rice"
+            type="button"
+            onClick={onDownloadQrCode}
+          >
+            <Download className="h-4 w-4" />
+            下载二维码
           </button>
         </div>
       </div>
@@ -1574,6 +1915,232 @@ function DishPreviewCard({ dish }: { dish: Dish }) {
         </div>
       </div>
     </article>
+  );
+}
+
+interface DishEditorRowProps {
+  categories: Menu['categories'];
+  dish: Dish;
+  isFirst: boolean;
+  isLast: boolean;
+  onDelete: () => void;
+  onMoveDown: () => void;
+  onMoveUp: () => void;
+  onUpdate: (patch: Partial<Dish>) => void;
+}
+
+function DishEditorRow({
+  categories,
+  dish,
+  isFirst,
+  isLast,
+  onDelete,
+  onMoveDown,
+  onMoveUp,
+  onUpdate,
+}: DishEditorRowProps) {
+  return (
+    <article className="rounded-lg border border-ink/10 bg-porcelain p-3">
+      <div className="grid grid-cols-[72px_1fr_auto] gap-3">
+        <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-md bg-rice">
+          {dish.image ? (
+            <img alt={dish.name} className="h-full w-full object-cover" src={dish.image} />
+          ) : (
+            <Image className="h-5 w-5 text-ink/35" />
+          )}
+        </div>
+
+        <div className="grid grid-cols-3 gap-3">
+          <TextField label="菜品名称" value={dish.name} onChange={(value) => onUpdate({ name: value })} />
+          <NumberField
+            label="价格"
+            max={999}
+            min={0}
+            step={1}
+            value={dish.price}
+            onChange={(value) => onUpdate({ price: value })}
+          />
+          <SelectField
+            label="所属分类"
+            value={dish.categoryId}
+            options={categories.map((category) => ({ label: category.name, value: category.id }))}
+            onChange={(value) => onUpdate({ categoryId: value })}
+          />
+        </div>
+
+        <div className="flex items-start gap-1">
+          <IconButton disabled={isFirst} label="上移菜品" onClick={onMoveUp}>
+            <ArrowUp className="h-3.5 w-3.5" />
+          </IconButton>
+          <IconButton disabled={isLast} label="下移菜品" onClick={onMoveDown}>
+            <ArrowDown className="h-3.5 w-3.5" />
+          </IconButton>
+          <button
+            className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs text-clay hover:bg-clay/10"
+            type="button"
+            onClick={onDelete}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            删除
+          </button>
+        </div>
+      </div>
+
+      <div className="mt-3 grid grid-cols-[220px_1fr_2fr] gap-3">
+        <ImageUploadField label="菜品图片" value={dish.image} onChange={(value) => onUpdate({ image: value })} />
+        <TextField
+          label="标签"
+          value={dish.tags.join('，')}
+          onChange={(value) =>
+            onUpdate({
+              tags: value
+                .split(/[，,]/)
+                .map((tag) => tag.trim())
+                .filter(Boolean),
+            })
+          }
+        />
+        <TextField label="描述" value={dish.description} onChange={(value) => onUpdate({ description: value })} />
+      </div>
+    </article>
+  );
+}
+
+interface ImageUploadFieldProps {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}
+
+function ImageUploadField({ label, onChange, value }: ImageUploadFieldProps) {
+  function handleFileChange(event: ChangeEvent<HTMLInputElement>): void {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.addEventListener('load', () => {
+      if (typeof reader.result === 'string') {
+        onChange(reader.result);
+      }
+    });
+    reader.readAsDataURL(file);
+  }
+
+  return (
+    <div>
+      <span className="text-xs font-medium text-ink/55">{label}</span>
+      <div className="mt-1 flex items-center gap-2">
+        <label className="inline-flex cursor-pointer items-center rounded-md border border-ink/10 bg-porcelain px-3 py-2 text-sm font-medium hover:bg-white">
+          上传图片
+          <input accept="image/*" className="sr-only" type="file" onChange={handleFileChange} />
+        </label>
+        {value ? (
+          <button
+            className="rounded-md px-2 py-2 text-xs text-clay hover:bg-clay/10"
+            type="button"
+            onClick={() => onChange('')}
+          >
+            清除
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function ModuleProductPreview({ module }: { module: StoreExtraModule }) {
+  return (
+    <div className="mt-3 grid grid-cols-[88px_1fr_auto] items-center gap-3 rounded-lg border border-ink/10 bg-porcelain p-3">
+      <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-md bg-rice">
+        {module.images[0] ? (
+          <img alt={module.title} className="h-full w-full object-cover" src={module.images[0]} />
+        ) : (
+          <Package className="h-6 w-6 text-ink/35" />
+        )}
+      </div>
+      <div className="min-w-0">
+        <p className="truncate text-sm font-semibold">{module.title}</p>
+        <p className="mt-1 line-clamp-2 text-xs leading-5 text-ink/55">{module.content}</p>
+      </div>
+      <span className="rounded-md bg-citrus px-3 py-2 text-sm font-semibold text-ink">
+        {getModuleProductPrice(module)}
+      </span>
+    </div>
+  );
+}
+
+function ModuleImagePreview({ module }: { module: StoreExtraModule }) {
+  const visibleImages = module.images.filter(Boolean);
+
+  if (visibleImages.length === 0) {
+    return (
+      <div className="mt-3 rounded-lg border border-dashed border-ink/20 bg-porcelain p-4 text-sm text-ink/50">
+        当前图文模块还没有图片地址。
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-3 grid grid-cols-2 gap-3">
+      {visibleImages.map((image, index) => (
+        <div key={`${image}-${index}`} className="overflow-hidden rounded-lg border border-ink/10 bg-porcelain">
+          <img alt={`${module.title} ${index + 1}`} className="h-28 w-full object-cover" src={image} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function IconButton({
+  children,
+  disabled = false,
+  label,
+  onClick,
+}: {
+  children: ReactNode;
+  disabled?: boolean;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      aria-label={label}
+      className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-porcelain text-ink hover:bg-white disabled:cursor-not-allowed disabled:opacity-35"
+      disabled={disabled}
+      title={label}
+      type="button"
+      onClick={onClick}
+    >
+      {children}
+    </button>
+  );
+}
+
+interface SelectFieldProps {
+  label: string;
+  options: Array<{ label: string; value: string }>;
+  value: string;
+  onChange: (value: string) => void;
+}
+
+function SelectField({ label, onChange, options, value }: SelectFieldProps) {
+  return (
+    <label className="block">
+      <span className="text-xs font-medium text-ink/55">{label}</span>
+      <select
+        className="mt-1 w-full rounded-md border border-ink/10 bg-porcelain px-3 py-2 text-sm outline-none ring-leaf/30 focus:border-leaf focus:ring-4"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 
