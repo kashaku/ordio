@@ -2,27 +2,66 @@ import {
   ArrowUpRight,
   CheckCircle2,
   Clock,
+  Copy,
+  Eye,
+  Grid3X3,
   Image,
+  Layers,
   MapPin,
+  MousePointer2,
   Plus,
   QrCode,
+  Redo2,
+  RotateCw,
   Save,
   Sparkles,
   Star,
   Store,
   Trash2,
+  Type,
+  Undo2,
+  ZoomIn,
+  ZoomOut,
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
+import type { MouseEvent, ReactNode } from 'react';
 import { useMemo, useState } from 'react';
 
 import { initializeOrdioData, writeOrdioData } from '../storage/ordioStorage';
 import type { Dish, EditorNode, Menu, MenuTemplate, OrdioData, Store as StoreModel, StoreExtraModule } from '../types';
 
-type MerchantStep = 'store' | 'template' | 'publish';
+type MerchantStep = 'store' | 'template' | 'editor' | 'publish';
+type NodePatch = Partial<{
+  name: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation: number;
+  zIndex: number;
+  locked: boolean;
+  visible: boolean;
+  text: string;
+  fontSize: number;
+  fontWeight: 'normal' | 'medium' | 'semibold' | 'bold';
+  color: string;
+  src: string;
+  alt: string;
+  objectFit: 'cover' | 'contain';
+  fill: string;
+  stroke: string;
+  strokeWidth: number;
+  radius: number;
+  background: string;
+  borderColor: string;
+  borderRadius: number;
+  childNodeIds: string[];
+}>;
 
 const steps: Array<{ id: MerchantStep; title: string; description: string }> = [
   { id: 'store', title: '编辑店铺信息', description: '评分、地点、营业时间和内容模块' },
   { id: 'template', title: '使用模板编辑菜单', description: '经典外卖点餐布局和菜品预览' },
+  { id: 'editor', title: '菜单编辑器', description: '组件、图层、画布和属性面板' },
   { id: 'publish', title: '发布二维码', description: '生成顾客端扫码入口' },
 ];
 
@@ -129,11 +168,104 @@ function createMenuFromTemplate(storeId: string, template: MenuTemplate, sourceM
   };
 }
 
+function ensureStoreInfoNode(menu: Menu, storeId: string): Menu {
+  const hasStoreInfo = menu.nodes.some((node) => node.type === 'storeInfo');
+  if (hasStoreInfo) {
+    return menu;
+  }
+
+  return {
+    ...menu,
+    nodes: [createStoreInfoNode(storeId), ...menu.nodes],
+  };
+}
+
+function applyNodePatch(node: EditorNode, patch: NodePatch): EditorNode {
+  return { ...node, ...patch } as EditorNode;
+}
+
+function createInsertedNode(type: 'text' | 'image' | 'rect' | 'container' | 'storeInfo', storeId: string): EditorNode {
+  const base = {
+    id: `node-${type}-${Date.now()}`,
+    name:
+      type === 'text'
+        ? '文本'
+        : type === 'image'
+          ? '图片'
+          : type === 'rect'
+            ? '矩形'
+            : type === 'container'
+              ? '容器'
+              : '店铺简略信息',
+    x: type === 'storeInfo' ? 0 : 96,
+    y: type === 'storeInfo' ? 0 : 180,
+    width: type === 'storeInfo' ? 375 : 160,
+    height: type === 'storeInfo' ? 132 : 88,
+    rotation: 0,
+    zIndex: 80,
+    locked: type === 'storeInfo',
+    visible: true,
+  };
+
+  if (type === 'text') {
+    return {
+      ...base,
+      type,
+      text: '新文本',
+      fontSize: 18,
+      fontWeight: 'semibold',
+      color: '#171717',
+    };
+  }
+
+  if (type === 'image') {
+    return {
+      ...base,
+      type,
+      src: '',
+      alt: '自定义图片',
+      objectFit: 'cover',
+    };
+  }
+
+  if (type === 'rect') {
+    return {
+      ...base,
+      type,
+      fill: '#F5B000',
+      stroke: '#171717',
+      strokeWidth: 1,
+      radius: 8,
+    };
+  }
+
+  if (type === 'container') {
+    return {
+      ...base,
+      type,
+      background: '#FFFFFF',
+      borderColor: '#E7E0D2',
+      borderRadius: 8,
+      childNodeIds: [],
+    };
+  }
+
+  return {
+    ...base,
+    type,
+    binding: { kind: 'store', storeId },
+  };
+}
+
 export function MerchantPage() {
   const [data, setData] = useState<OrdioData>(() => initializeOrdioData());
   const [activeStep, setActiveStep] = useState<MerchantStep>('store');
   const [savedMessage, setSavedMessage] = useState('已加载本地演示数据');
   const [selectedMenuId, setSelectedMenuId] = useState<string | null>(null);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [clipboardNode, setClipboardNode] = useState<EditorNode | null>(null);
+  const [undoStack, setUndoStack] = useState<Menu[]>([]);
+  const [redoStack, setRedoStack] = useState<Menu[]>([]);
 
   const store = getPrimaryStore(data);
   const storeMenus = data.menus.filter((item) => item.storeId === store.id);
@@ -153,6 +285,134 @@ export function MerchantPage() {
       return nextData;
     });
     setSavedMessage(message);
+  }
+
+  function replaceCurrentMenu(nextMenu: Menu, message: string, shouldTrackHistory = true): void {
+    if (shouldTrackHistory) {
+      setUndoStack((current) => [...current, menu]);
+      setRedoStack([]);
+    }
+
+    persist(
+      (current) => ({
+        ...current,
+        menus: current.menus.map((item) =>
+          item.id === menu.id
+            ? ensureStoreInfoNode({ ...nextMenu, updatedAt: new Date().toISOString() }, store.id)
+            : item,
+        ),
+      }),
+      message,
+    );
+  }
+
+  function updateCurrentMenu(updater: (currentMenu: Menu) => Menu, message: string, shouldTrackHistory = true): void {
+    replaceCurrentMenu(updater(menu), message, shouldTrackHistory);
+  }
+
+  function updateNode(nodeId: string, patch: NodePatch, message = '画布节点已更新', shouldTrackHistory = true): void {
+    updateCurrentMenu(
+      (currentMenu) => ({
+        ...currentMenu,
+        nodes: currentMenu.nodes.map((node) => (node.id === nodeId ? applyNodePatch(node, patch) : node)),
+      }),
+      message,
+      shouldTrackHistory,
+    );
+  }
+
+  function insertNode(type: 'text' | 'image' | 'rect' | 'container' | 'storeInfo'): void {
+    if (type === 'storeInfo' && menu.nodes.some((node) => node.type === 'storeInfo')) {
+      setSelectedNodeId(menu.nodes.find((node) => node.type === 'storeInfo')?.id ?? null);
+      setSavedMessage('店铺简略信息组件已存在');
+      return;
+    }
+
+    const nextNode = createInsertedNode(type, store.id);
+    updateCurrentMenu(
+      (currentMenu) => ({
+        ...currentMenu,
+        nodes: [...currentMenu.nodes, nextNode],
+      }),
+      '已插入画布组件',
+    );
+    setSelectedNodeId(nextNode.id);
+  }
+
+  function deleteSelectedNode(): void {
+    const selectedNode = menu.nodes.find((node) => node.id === selectedNodeId);
+    if (!selectedNode) {
+      return;
+    }
+    if (selectedNode.type === 'storeInfo') {
+      setSavedMessage('店铺简略信息组件不可删除');
+      return;
+    }
+
+    updateCurrentMenu(
+      (currentMenu) => ({
+        ...currentMenu,
+        nodes: currentMenu.nodes.filter((node) => node.id !== selectedNode.id),
+      }),
+      '已删除画布节点',
+    );
+    setSelectedNodeId(null);
+  }
+
+  function copySelectedNode(): void {
+    const selectedNode = menu.nodes.find((node) => node.id === selectedNodeId);
+    if (!selectedNode) {
+      return;
+    }
+    setClipboardNode(selectedNode);
+    setSavedMessage('已复制节点');
+  }
+
+  function pasteNode(): void {
+    if (!clipboardNode) {
+      return;
+    }
+    const pastedNode = {
+      ...clipboardNode,
+      id: `node-copy-${Date.now()}`,
+      name: `${clipboardNode.name} 副本`,
+      x: clipboardNode.x + 16,
+      y: clipboardNode.y + 16,
+      locked: false,
+    } as EditorNode;
+
+    updateCurrentMenu(
+      (currentMenu) => ({
+        ...currentMenu,
+        nodes: [...currentMenu.nodes, pastedNode],
+      }),
+      '已粘贴节点',
+    );
+    setSelectedNodeId(pastedNode.id);
+  }
+
+  function undoEditorChange(): void {
+    const previousMenu = undoStack.at(-1);
+    if (!previousMenu) {
+      return;
+    }
+    setUndoStack((current) => current.slice(0, -1));
+    setRedoStack((current) => [...current, menu]);
+    replaceCurrentMenu(previousMenu, '已撤销上一步', false);
+  }
+
+  function redoEditorChange(): void {
+    const nextMenu = redoStack.at(-1);
+    if (!nextMenu) {
+      return;
+    }
+    setRedoStack((current) => current.slice(0, -1));
+    setUndoStack((current) => [...current, menu]);
+    replaceCurrentMenu(nextMenu, '已重做上一步', false);
+  }
+
+  function publishCurrentMenu(): void {
+    updateCurrentMenu((currentMenu) => ({ ...currentMenu, status: 'published' }), '菜单已发布');
   }
 
   function updateStore(patch: Partial<StoreModel>, message = '店铺信息已保存'): void {
@@ -270,7 +530,13 @@ export function MerchantPage() {
         </div>
       </header>
 
-      <div className="mx-auto grid min-w-[1180px] max-w-[1440px] grid-cols-[260px_minmax(560px,1fr)_390px] gap-6 px-8 py-6">
+      <div
+        className={`mx-auto grid min-w-[1180px] gap-6 px-8 py-6 ${
+          activeStep === 'editor'
+            ? 'max-w-[1680px] grid-cols-[260px_minmax(900px,1fr)]'
+            : 'max-w-[1440px] grid-cols-[260px_minmax(560px,1fr)_390px]'
+        }`}
+      >
         <aside className="space-y-4">
           <section className="rounded-lg border border-ink/10 bg-porcelain p-4 shadow-sm">
             <p className="text-sm font-semibold">发布流程</p>
@@ -339,27 +605,55 @@ export function MerchantPage() {
             />
           ) : null}
 
+          {activeStep === 'editor' ? (
+            <MenuEditor
+              canRedo={redoStack.length > 0}
+              canUndo={undoStack.length > 0}
+              menu={menu}
+              selectedNodeId={selectedNodeId}
+              store={store}
+              onCopy={copySelectedNode}
+              onDelete={deleteSelectedNode}
+              onInsertNode={insertNode}
+              onPaste={pasteNode}
+              onPublish={publishCurrentMenu}
+              onRedo={redoEditorChange}
+              onSave={() => replaceCurrentMenu(menu, '菜单编辑已保存', false)}
+              onSelectNode={setSelectedNodeId}
+              onUndo={undoEditorChange}
+              onUpdateCanvas={(patch) =>
+                updateCurrentMenu(
+                  (currentMenu) => ({ ...currentMenu, canvasConfig: { ...currentMenu.canvasConfig, ...patch } }),
+                  '画布设置已更新',
+                )
+              }
+              onUpdateNode={updateNode}
+            />
+          ) : null}
+
           {activeStep === 'publish' ? (
             <PublishPanel customerUrl={customerUrl} menu={menu} store={store} onPublish={publishQrCode} />
           ) : null}
         </section>
 
-        <aside className="space-y-4">
-          <PhonePreview menu={menu} store={store} />
-          <section className="rounded-lg border border-ink/10 bg-porcelain p-4 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-semibold">扫码入口</p>
-                <p className="mt-1 text-xs text-ink/50">发布后顾客进入此店铺菜单</p>
+        {activeStep !== 'editor' ? (
+          <aside className="space-y-4">
+            <PhonePreview menu={menu} store={store} />
+            <section className="rounded-lg border border-ink/10 bg-porcelain p-4 shadow-sm">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-semibold">扫码入口</p>
+                  <p className="mt-1 text-xs text-ink/50">发布后顾客进入此店铺菜单</p>
+                </div>
+                <QrCode className="h-5 w-5 text-leaf" />
               </div>
-              <QrCode className="h-5 w-5 text-leaf" />
-            </div>
-            <div className="mt-4 flex justify-center rounded-lg bg-rice p-4">
-              <QRCodeSVG value={customerUrl} size={148} marginSize={1} />
-            </div>
-            <p className="mt-3 break-all text-xs leading-5 text-ink/55">{customerUrl}</p>
-          </section>
-        </aside>
+              <div className="mt-4 flex justify-center rounded-lg bg-rice p-4">
+                <QRCodeSVG value={customerUrl} size={148} marginSize={1} />
+              </div>
+              <p className="mt-3 break-all text-xs leading-5 text-ink/55">{customerUrl}</p>
+            </section>
+          </aside>
+        ) : null}
       </div>
     </main>
   );
@@ -600,6 +894,548 @@ function MenuManager({
         </div>
       </div>
     </section>
+  );
+}
+
+interface MenuEditorProps {
+  canRedo: boolean;
+  canUndo: boolean;
+  menu: Menu;
+  selectedNodeId: string | null;
+  store: StoreModel;
+  onCopy: () => void;
+  onDelete: () => void;
+  onInsertNode: (type: 'text' | 'image' | 'rect' | 'container' | 'storeInfo') => void;
+  onPaste: () => void;
+  onPublish: () => void;
+  onRedo: () => void;
+  onSave: () => void;
+  onSelectNode: (nodeId: string | null) => void;
+  onUndo: () => void;
+  onUpdateCanvas: (patch: Partial<Menu['canvasConfig']>) => void;
+  onUpdateNode: (nodeId: string, patch: NodePatch, message?: string, shouldTrackHistory?: boolean) => void;
+}
+
+function MenuEditor({
+  canRedo,
+  canUndo,
+  menu,
+  onCopy,
+  onDelete,
+  onInsertNode,
+  onPaste,
+  onPublish,
+  onRedo,
+  onSave,
+  onSelectNode,
+  onUndo,
+  onUpdateCanvas,
+  onUpdateNode,
+  selectedNodeId,
+  store,
+}: MenuEditorProps) {
+  const sortedNodes = [...menu.nodes].sort((left, right) => left.zIndex - right.zIndex);
+  const selectedNode = menu.nodes.find((node) => node.id === selectedNodeId) ?? null;
+
+  return (
+    <section className="overflow-hidden rounded-lg border border-ink/10 bg-porcelain shadow-sm">
+      <EditorToolbar
+        canRedo={canRedo}
+        canUndo={canUndo}
+        menu={menu}
+        selectedNode={selectedNode}
+        onCopy={onCopy}
+        onDelete={onDelete}
+        onPaste={onPaste}
+        onPublish={onPublish}
+        onRedo={onRedo}
+        onSave={onSave}
+        onUndo={onUndo}
+      />
+
+      <div className="grid min-h-[720px] grid-cols-[220px_minmax(420px,1fr)_260px]">
+        <EditorLeftPanel
+          nodes={sortedNodes}
+          selectedNodeId={selectedNodeId}
+          onInsertNode={onInsertNode}
+          onSelectNode={onSelectNode}
+        />
+        <EditorCanvas
+          menu={menu}
+          nodes={sortedNodes}
+          selectedNodeId={selectedNodeId}
+          store={store}
+          onSelectNode={onSelectNode}
+          onUpdateNode={onUpdateNode}
+        />
+        <EditorPropertiesPanel
+          menu={menu}
+          selectedNode={selectedNode}
+          onUpdateCanvas={onUpdateCanvas}
+          onUpdateNode={onUpdateNode}
+        />
+      </div>
+    </section>
+  );
+}
+
+interface EditorToolbarProps {
+  canRedo: boolean;
+  canUndo: boolean;
+  menu: Menu;
+  selectedNode: EditorNode | null;
+  onCopy: () => void;
+  onDelete: () => void;
+  onPaste: () => void;
+  onPublish: () => void;
+  onRedo: () => void;
+  onSave: () => void;
+  onUndo: () => void;
+}
+
+function EditorToolbar({
+  canRedo,
+  canUndo,
+  menu,
+  onCopy,
+  onDelete,
+  onPaste,
+  onPublish,
+  onRedo,
+  onSave,
+  onUndo,
+  selectedNode,
+}: EditorToolbarProps) {
+  return (
+    <div className="flex items-center justify-between border-b border-ink/10 bg-ink px-4 py-3 text-porcelain">
+      <div>
+        <p className="text-sm font-semibold">菜单编辑器</p>
+        <p className="text-xs text-porcelain/60">
+          {menu.nodes.length} 个组件 · {selectedNode ? `已选择 ${selectedNode.name}` : '未选择组件'}
+        </p>
+      </div>
+      <div className="flex items-center gap-2">
+        <ToolbarButton disabled={!canUndo} icon={<Undo2 className="h-4 w-4" />} label="撤销" onClick={onUndo} />
+        <ToolbarButton disabled={!canRedo} icon={<Redo2 className="h-4 w-4" />} label="重做" onClick={onRedo} />
+        <ToolbarButton disabled={!selectedNode} icon={<Copy className="h-4 w-4" />} label="复制" onClick={onCopy} />
+        <ToolbarButton icon={<Copy className="h-4 w-4" />} label="粘贴" onClick={onPaste} />
+        <ToolbarButton disabled={!selectedNode} icon={<Trash2 className="h-4 w-4" />} label="删除" onClick={onDelete} />
+        <ToolbarButton icon={<Eye className="h-4 w-4" />} label="预览" onClick={onSave} />
+        <ToolbarButton icon={<Save className="h-4 w-4" />} label="保存" onClick={onSave} />
+        <button
+          className="inline-flex items-center gap-2 rounded-md bg-citrus px-3 py-2 text-sm font-semibold text-ink hover:bg-citrus/90"
+          type="button"
+          onClick={onPublish}
+        >
+          <QrCode className="h-4 w-4" />
+          发布
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ToolbarButton({
+  disabled = false,
+  icon,
+  label,
+  onClick,
+}: {
+  disabled?: boolean;
+  icon: ReactNode;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      className="inline-flex items-center gap-1.5 rounded-md border border-porcelain/15 px-3 py-2 text-sm hover:bg-porcelain/10 disabled:cursor-not-allowed disabled:opacity-35"
+      disabled={disabled}
+      type="button"
+      onClick={onClick}
+    >
+      {icon}
+      {label}
+    </button>
+  );
+}
+
+interface EditorLeftPanelProps {
+  nodes: EditorNode[];
+  selectedNodeId: string | null;
+  onInsertNode: (type: 'text' | 'image' | 'rect' | 'container' | 'storeInfo') => void;
+  onSelectNode: (nodeId: string | null) => void;
+}
+
+function EditorLeftPanel({ nodes, onInsertNode, onSelectNode, selectedNodeId }: EditorLeftPanelProps) {
+  const componentButtons: Array<{
+    type: 'text' | 'image' | 'rect' | 'container' | 'storeInfo';
+    label: string;
+    icon: ReactNode;
+  }> = [
+    { type: 'text', label: '文本', icon: <Type className="h-4 w-4" /> },
+    { type: 'image', label: '图片', icon: <Image className="h-4 w-4" /> },
+    { type: 'rect', label: '矩形', icon: <MousePointer2 className="h-4 w-4" /> },
+    { type: 'container', label: '容器', icon: <Grid3X3 className="h-4 w-4" /> },
+    { type: 'storeInfo', label: '店铺信息', icon: <Store className="h-4 w-4" /> },
+  ];
+
+  return (
+    <aside className="border-r border-ink/10 bg-rice">
+      <div className="border-b border-ink/10 p-4">
+        <p className="text-sm font-semibold">组件面板</p>
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          {componentButtons.map((button) => (
+            <button
+              key={button.type}
+              className="inline-flex items-center gap-2 rounded-md border border-ink/10 bg-porcelain px-3 py-2 text-sm hover:border-ink"
+              type="button"
+              onClick={() => onInsertNode(button.type)}
+            >
+              {button.icon}
+              {button.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="p-4">
+        <p className="inline-flex items-center gap-2 text-sm font-semibold">
+          <Layers className="h-4 w-4" />
+          图层
+        </p>
+        <div className="mt-3 space-y-2">
+          {[...nodes].reverse().map((node) => (
+            <button
+              key={node.id}
+              className={`w-full rounded-md border px-3 py-2 text-left text-sm ${
+                node.id === selectedNodeId ? 'border-ink bg-ink text-porcelain' : 'border-ink/10 bg-porcelain'
+              }`}
+              type="button"
+              onClick={() => onSelectNode(node.id)}
+            >
+              <span className="block truncate font-medium">{node.name}</span>
+              <span className={node.id === selectedNodeId ? 'text-xs text-porcelain/60' : 'text-xs text-ink/45'}>
+                {node.type} · z{node.zIndex}
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+interface EditorCanvasProps {
+  menu: Menu;
+  nodes: EditorNode[];
+  selectedNodeId: string | null;
+  store: StoreModel;
+  onSelectNode: (nodeId: string | null) => void;
+  onUpdateNode: (nodeId: string, patch: NodePatch, message?: string, shouldTrackHistory?: boolean) => void;
+}
+
+function EditorCanvas({ menu, nodes, onSelectNode, onUpdateNode, selectedNodeId, store }: EditorCanvasProps) {
+  const [dragState, setDragState] = useState<{
+    nodeId: string;
+    startMouseX: number;
+    startMouseY: number;
+    startNodeX: number;
+    startNodeY: number;
+  } | null>(null);
+  const zoom = menu.canvasConfig.zoom;
+  const gridSize = menu.canvasConfig.gridSize;
+
+  function snap(value: number): number {
+    return menu.canvasConfig.snapToGrid ? Math.round(value / gridSize) * gridSize : Math.round(value);
+  }
+
+  function handleNodeMouseDown(event: MouseEvent<HTMLDivElement>, node: EditorNode): void {
+    event.stopPropagation();
+    onSelectNode(node.id);
+    if (node.locked) {
+      return;
+    }
+    setDragState({
+      nodeId: node.id,
+      startMouseX: event.clientX,
+      startMouseY: event.clientY,
+      startNodeX: node.x,
+      startNodeY: node.y,
+    });
+  }
+
+  function handleMouseMove(event: MouseEvent<HTMLDivElement>): void {
+    if (!dragState) {
+      return;
+    }
+    const nextX = snap(dragState.startNodeX + (event.clientX - dragState.startMouseX) / zoom);
+    const nextY = snap(dragState.startNodeY + (event.clientY - dragState.startMouseY) / zoom);
+    onUpdateNode(dragState.nodeId, { x: nextX, y: nextY }, '正在移动节点', false);
+  }
+
+  return (
+    <div
+      className="relative overflow-auto bg-[#d8d3c9] p-8"
+      onMouseMove={handleMouseMove}
+      onMouseUp={() => setDragState(null)}
+      onMouseLeave={() => setDragState(null)}
+    >
+      <div className="mb-3 flex items-center justify-between text-xs text-ink/55">
+        <span>画布 {menu.canvasConfig.width} x {menu.canvasConfig.height}</span>
+        <span>网格 {menu.canvasConfig.gridSize}px · 缩放 {Math.round(zoom * 100)}%</span>
+      </div>
+      <div
+        className="relative mx-auto overflow-hidden border border-ink/20 shadow-xl"
+        style={{
+          width: menu.canvasConfig.width * zoom,
+          height: menu.canvasConfig.height * zoom,
+          backgroundColor: menu.canvasConfig.background,
+        }}
+        onMouseDown={() => onSelectNode(null)}
+      >
+        <div
+          className="absolute inset-0 opacity-30"
+          style={{
+            backgroundImage:
+              'linear-gradient(to right, rgba(23,23,23,.16) 1px, transparent 1px), linear-gradient(to bottom, rgba(23,23,23,.16) 1px, transparent 1px)',
+            backgroundSize: `${gridSize * zoom}px ${gridSize * zoom}px`,
+          }}
+        />
+        <div className="origin-top-left" style={{ transform: `scale(${zoom})`, width: menu.canvasConfig.width }}>
+          {nodes
+            .filter((node) => node.visible)
+            .map((node) => (
+              <CanvasNode
+                key={node.id}
+                node={node}
+                selected={node.id === selectedNodeId}
+                store={store}
+                onMouseDown={(event) => handleNodeMouseDown(event, node)}
+              />
+            ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CanvasNode({
+  node,
+  onMouseDown,
+  selected,
+  store,
+}: {
+  node: EditorNode;
+  selected: boolean;
+  store: StoreModel;
+  onMouseDown: (event: MouseEvent<HTMLDivElement>) => void;
+}) {
+  const baseStyle = {
+    left: node.x,
+    top: node.y,
+    width: node.width,
+    height: node.height,
+    transform: `rotate(${node.rotation}deg)`,
+    zIndex: node.zIndex,
+  };
+
+  return (
+    <div
+      className={`absolute cursor-move overflow-hidden border ${
+        selected ? 'border-leaf ring-2 ring-leaf/30' : 'border-transparent'
+      }`}
+      style={baseStyle}
+      onMouseDown={onMouseDown}
+    >
+      <NodeContent node={node} store={store} />
+    </div>
+  );
+}
+
+function NodeContent({ node, store }: { node: EditorNode; store: StoreModel }) {
+  if (node.type === 'text') {
+    return (
+      <div
+        className="flex h-full w-full items-center px-2"
+        style={{ color: node.color, fontSize: node.fontSize, fontWeight: node.fontWeight }}
+      >
+        {node.text}
+      </div>
+    );
+  }
+
+  if (node.type === 'image') {
+    return (
+      <div className="flex h-full w-full items-center justify-center bg-ink/10 text-xs text-ink/45">
+        {node.src ? <img alt={node.alt} className="h-full w-full object-cover" src={node.src} /> : '图片占位'}
+      </div>
+    );
+  }
+
+  if (node.type === 'rect' || node.type === 'circle' || node.type === 'line') {
+    return (
+      <div
+        className="h-full w-full"
+        style={{
+          background: node.fill,
+          border: `${node.strokeWidth}px solid ${node.stroke}`,
+          borderRadius: node.type === 'circle' ? '999px' : node.radius ?? 0,
+        }}
+      />
+    );
+  }
+
+  if (node.type === 'container') {
+    return (
+      <div
+        className="h-full w-full"
+        style={{ background: node.background, border: `1px solid ${node.borderColor}`, borderRadius: node.borderRadius }}
+      />
+    );
+  }
+
+  if (node.type === 'storeInfo') {
+    return (
+      <div className="h-full w-full bg-ink p-4 text-porcelain">
+        <p className="text-lg font-semibold">{store.name}</p>
+        <div className="mt-2 flex gap-3 text-xs text-porcelain/75">
+          <span>评分 {store.rating.toFixed(1)}</span>
+          <span>{store.location}</span>
+        </div>
+        <p className="mt-3 line-clamp-2 text-xs leading-5 text-porcelain/60">{store.description}</p>
+      </div>
+    );
+  }
+
+  return <div className="h-full w-full bg-citrus/20" />;
+}
+
+interface EditorPropertiesPanelProps {
+  menu: Menu;
+  selectedNode: EditorNode | null;
+  onUpdateCanvas: (patch: Partial<Menu['canvasConfig']>) => void;
+  onUpdateNode: (nodeId: string, patch: NodePatch, message?: string, shouldTrackHistory?: boolean) => void;
+}
+
+function EditorPropertiesPanel({ menu, onUpdateCanvas, onUpdateNode, selectedNode }: EditorPropertiesPanelProps) {
+  return (
+    <aside className="border-l border-ink/10 bg-porcelain p-4">
+      <p className="text-sm font-semibold">属性面板</p>
+
+      <div className="mt-4 space-y-4">
+        <section className="rounded-lg bg-rice p-3">
+          <p className="mb-3 text-xs font-semibold text-ink/55">画布</p>
+          <div className="grid grid-cols-2 gap-2">
+            <NumberField
+              label="缩放"
+              max={1.6}
+              min={0.5}
+              step={0.1}
+              value={menu.canvasConfig.zoom}
+              onChange={(value) => onUpdateCanvas({ zoom: value })}
+            />
+            <NumberField
+              label="网格"
+              max={32}
+              min={4}
+              step={4}
+              value={menu.canvasConfig.gridSize}
+              onChange={(value) => onUpdateCanvas({ gridSize: value })}
+            />
+          </div>
+          <div className="mt-3 flex gap-2">
+            <button
+              className="inline-flex flex-1 items-center justify-center gap-1 rounded-md bg-porcelain px-2 py-2 text-xs"
+              type="button"
+              onClick={() => onUpdateCanvas({ zoom: Math.max(0.5, menu.canvasConfig.zoom - 0.1) })}
+            >
+              <ZoomOut className="h-3.5 w-3.5" />
+              缩小
+            </button>
+            <button
+              className="inline-flex flex-1 items-center justify-center gap-1 rounded-md bg-porcelain px-2 py-2 text-xs"
+              type="button"
+              onClick={() => onUpdateCanvas({ zoom: Math.min(1.6, menu.canvasConfig.zoom + 0.1) })}
+            >
+              <ZoomIn className="h-3.5 w-3.5" />
+              放大
+            </button>
+          </div>
+        </section>
+
+        {selectedNode ? (
+          <section className="space-y-3 rounded-lg bg-rice p-3">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold text-ink/55">选中组件</p>
+              {selectedNode.locked ? <span className="rounded bg-ink/10 px-2 py-1 text-xs text-ink/55">锁定</span> : null}
+            </div>
+            <TextField
+              label="名称"
+              value={selectedNode.name}
+              onChange={(value) => onUpdateNode(selectedNode.id, { name: value })}
+            />
+            <div className="grid grid-cols-2 gap-2">
+              <NumberField label="X" max={999} min={-999} step={1} value={selectedNode.x} onChange={(value) => onUpdateNode(selectedNode.id, { x: value })} />
+              <NumberField label="Y" max={999} min={-999} step={1} value={selectedNode.y} onChange={(value) => onUpdateNode(selectedNode.id, { y: value })} />
+              <NumberField label="宽" max={999} min={1} step={1} value={selectedNode.width} onChange={(value) => onUpdateNode(selectedNode.id, { width: value })} />
+              <NumberField label="高" max={999} min={1} step={1} value={selectedNode.height} onChange={(value) => onUpdateNode(selectedNode.id, { height: value })} />
+              <NumberField
+                label="旋转"
+                max={360}
+                min={-360}
+                step={1}
+                value={selectedNode.rotation}
+                onChange={(value) => onUpdateNode(selectedNode.id, { rotation: value })}
+              />
+              <NumberField label="层级" max={999} min={0} step={1} value={selectedNode.zIndex} onChange={(value) => onUpdateNode(selectedNode.id, { zIndex: value })} />
+            </div>
+            <button
+              className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-porcelain px-3 py-2 text-sm"
+              type="button"
+              onClick={() => onUpdateNode(selectedNode.id, { rotation: selectedNode.rotation + 15 })}
+            >
+              <RotateCw className="h-4 w-4" />
+              旋转 15 度
+            </button>
+            {selectedNode.type === 'text' ? (
+              <>
+                <TextField
+                  label="文本"
+                  value={selectedNode.text}
+                  onChange={(value) => onUpdateNode(selectedNode.id, { text: value })}
+                />
+                <NumberField
+                  label="字号"
+                  max={72}
+                  min={8}
+                  step={1}
+                  value={selectedNode.fontSize}
+                  onChange={(value) => onUpdateNode(selectedNode.id, { fontSize: value })}
+                />
+              </>
+            ) : null}
+            {selectedNode.type === 'image' ? (
+              <>
+                <TextField
+                  label="图片地址"
+                  value={selectedNode.src}
+                  onChange={(value) => onUpdateNode(selectedNode.id, { src: value })}
+                />
+                <TextField
+                  label="替代文本"
+                  value={selectedNode.alt}
+                  onChange={(value) => onUpdateNode(selectedNode.id, { alt: value })}
+                />
+              </>
+            ) : null}
+          </section>
+        ) : (
+          <div className="rounded-lg border border-dashed border-ink/20 p-4 text-sm leading-6 text-ink/55">
+            请选择画布中的组件或图层。店铺简略信息组件默认保留，展示评分和地点，不允许删除。
+          </div>
+        )}
+      </div>
+    </aside>
   );
 }
 
