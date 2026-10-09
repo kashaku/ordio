@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Clock, MapPin, Minus, Plus, ShoppingBag, Star, Store as StoreIcon, Trash2, X } from 'lucide-react';
+import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
+import { Clock, MapPin, Minus, PenLine, Plus, ShoppingBag, Star, Store as StoreIcon, Trash2, X } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
 
 import { readOrdioData } from '../storage/ordioStorage';
@@ -7,6 +7,8 @@ import { dishPriceInCents, getPublishedMenu, resolveCart, useCartStore } from '.
 import type { Dish, SelectedSpec } from '../types/domain';
 import { DishImage } from '../components/customer/DishImage';
 import { DishOptions } from '../components/customer/DishOptions';
+
+const CommentComposer = lazy(() => import('../components/customer/CommentComposer').then((module) => ({ default: module.CommentComposer })));
 
 function money(cents: number): string {
   return `¥${(cents / 100).toFixed(2).replace(/\.00$/, '')}`;
@@ -57,6 +59,8 @@ export function CustomerPage() {
   const [activeCategory, setActiveCategory] = useState('');
   const [selectedDish, setSelectedDish] = useState<Dish | null>(null);
   const [cartOpen, setCartOpen] = useState(false);
+  const [commentDishId, setCommentDishId] = useState<string | null>(null);
+  const [commentFeedback, setCommentFeedback] = useState<{ dishId: string; message: string } | null>(null);
   const items = useCartStore((state) => state.carts[storeId] ?? emptyCart);
   const add = useCartStore((state) => state.add);
   const changeQuantity = useCartStore((state) => state.changeQuantity);
@@ -74,6 +78,7 @@ export function CustomerPage() {
 
   const store = data.stores.find((item) => item.id === storeId);
   const menu = getPublishedMenu(data, storeId);
+  const commentDish = menu?.dishes.find((dish) => dish.id === commentDishId);
   const categories = [...(menu?.categories ?? [])].sort((a, b) => a.sortOrder - b.sortOrder);
   const categoryId = categories.some((item) => item.id === activeCategory) ? activeCategory : categories[0]?.id;
   const dishes = menu?.dishes.filter((dish) => dish.categoryId === categoryId) ?? [];
@@ -97,7 +102,7 @@ export function CustomerPage() {
         </div>
       </header>
       {!menu ? <p className="px-5 py-16 text-center text-sm text-neutral-500">菜单尚未发布，请稍后再来。</p> : <>
-        <div className="flex items-center justify-between border-b px-5 py-3 font-semibold text-leaf"><span>点餐 <span className="ml-2 text-xs font-normal text-neutral-400">{menu.dishes.length} 道菜品</span></span><Link to={`/m/${storeId}/orders`} className="text-sm font-normal">我的订单</Link></div>
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b px-5 py-3 font-semibold text-leaf"><span>点餐 <span className="ml-2 text-xs font-normal text-neutral-400">{menu.dishes.length} 道菜品</span></span><Link to={`/m/${storeId}/orders`} className="text-sm font-normal">我的订单</Link></div>
         <div className="grid min-h-[calc(100dvh-260px)] grid-cols-[80px_minmax(0,1fr)] pb-[calc(100px+env(safe-area-inset-bottom))]">
           <nav aria-label="菜品分类" className="bg-neutral-100">
             <div className="sticky top-0 max-h-[calc(100dvh-100px)] overflow-y-auto">
@@ -123,6 +128,8 @@ export function CustomerPage() {
                       {dish.specs.length ? '选规格' : <Plus size={18} />}
                     </button>
                   </div></div>
+                  <button type="button" aria-label={`为 ${dish.name} 写评论`} onClick={() => { setCommentFeedback(null); setCommentDishId(dish.id); }} className="mt-1 flex min-h-11 items-center gap-1 text-xs text-leaf"><PenLine size={14} />写评论</button>
+                  {commentFeedback?.dishId === dish.id && <p role="status" className="text-xs text-leaf">{commentFeedback.message}</p>}
                 </div>
               </article>;
             })}
@@ -135,6 +142,11 @@ export function CustomerPage() {
         </footer>
       </>}
       {selectedDish && <SpecPicker key={selectedDish.id} dish={selectedDish} onClose={() => setSelectedDish(null)} onAdd={(specs) => add(storeId, selectedDish.id, specs)} />}
+      {commentDish && <Suspense fallback={<p role="status" className="fixed inset-x-0 bottom-24 z-30 mx-auto w-fit rounded-lg bg-white px-4 py-3 text-sm shadow">加载评论中…</p>}><CommentComposer key={commentDish.id} storeId={storeId} dishId={commentDish.id} onClose={() => setCommentDishId(null)} onPublished={() => {
+        setData(readOrdioData());
+        setCommentFeedback({ dishId: commentDish.id, message: '评论已发布' });
+        setCommentDishId(null);
+      }} /></Suspense>}
       {cartOpen && <Sheet title="购物车" onClose={() => setCartOpen(false)}>
         {cart.length === 0 ? <div className="py-10 text-center"><ShoppingBag className="mx-auto mb-3 text-neutral-300" size={32} /><p className="text-sm text-neutral-500">购物车是空的，选几道喜欢的菜吧。</p></div> : <>
           <button type="button" onClick={() => clear(storeId)} className="mb-3 ml-auto flex min-h-11 items-center gap-2 text-sm text-neutral-500"><Trash2 size={16} />清空购物车</button>

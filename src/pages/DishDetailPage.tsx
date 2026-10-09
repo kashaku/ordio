@@ -1,32 +1,16 @@
 import { useEffect, useState } from 'react';
-import { ArrowLeft, MessageSquare, Plus, ShoppingBag, Star, UserRound } from 'lucide-react';
+import { ArrowLeft, MessageSquare, PenLine, Plus, ShoppingBag, Star } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
 
 import { DishImage } from '../components/customer/DishImage';
 import { DishOptions } from '../components/customer/DishOptions';
+import { CommentEntry } from '../components/customer/CommentEntry';
 import { dishPriceInCents, getPublishedMenu, resolveCart, useCartStore } from '../state/cartStore';
 import { readOrdioData } from '../storage/ordioStorage';
 import type { CartItem, Comment, Dish, Menu, SelectedSpec, Store } from '../types/domain';
 
 const emptyCart: CartItem[] = [];
 const money = (cents: number) => `¥${(cents / 100).toFixed(2).replace(/\.00$/, '')}`;
-
-function CommentEntry({ comment, menu }: { comment: Comment; menu: Menu }) {
-  const pairedDishes = menu.dishes.filter((dish) => comment.selectedDishIds.includes(dish.id));
-  return <article className="border-b border-neutral-100 py-5 last:border-0">
-    <div className="flex items-center gap-3">
-      <div className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-neutral-100 text-neutral-500">
-        <UserRound size={18} />
-        {comment.avatar && <img src={comment.avatar} alt={`${comment.userNickname}的头像`} className="absolute inset-0 h-full w-full object-cover" onError={(event) => { event.currentTarget.hidden = true; }} />}
-      </div>
-      <div className="min-w-0 flex-1"><p className="break-words text-sm font-medium">{comment.userNickname}</p><time dateTime={comment.createdAt} className="mt-1 block text-xs text-neutral-400">{new Date(comment.createdAt).toLocaleDateString('zh-CN')}</time></div>
-      <span className="flex shrink-0 items-center gap-1 text-xs" aria-label={`${comment.rating}分`}><Star size={14} className="fill-citrus text-citrus" />{comment.rating.toFixed(1)}</span>
-    </div>
-    <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-6">{comment.content}</p>
-    {comment.images.length > 0 && <div className="mt-3 grid grid-cols-3 gap-2">{comment.images.map((src, index) => <DishImage key={`${src}-${index}`} src={src} name={`${comment.userNickname}的评论图片${index + 1}`} />)}</div>}
-    {pairedDishes.length > 0 && <p className="mt-3 break-words text-xs leading-5 text-neutral-500">菜品搭配：{pairedDishes.map((dish) => dish.name).join('、')}</p>}
-  </article>;
-}
 
 interface DetailContentProps {
   store: Store;
@@ -82,8 +66,9 @@ function DetailContent({ store, menu, dish, comments }: DetailContentProps) {
       {error && <p role="alert" className="mt-2 text-sm leading-6 text-red-700">{error}</p>}
     </section>
     <section id="dish-comments" aria-label="菜品评论" className="scroll-mt-20 px-5 py-5">
-      <div className="flex items-center justify-between gap-3"><h2 className="text-base font-semibold">菜品评论</h2><span className="text-xs text-neutral-500">{comments.length} 条</span></div>
-      {comments.length > 0 ? comments.map((comment) => <CommentEntry key={comment.id} comment={comment} menu={menu} />) : <p className="py-8 text-center text-sm text-neutral-500">这道菜还没有评论。</p>}
+      <div className="flex items-center justify-between gap-3"><h2 className="text-base font-semibold">菜品评论</h2><Link to={`/m/${store.id}/comments/dish/${dish.id}`} className="flex min-h-11 items-center text-xs text-leaf">全部评论（{comments.length}）</Link></div>
+      <Link to={`/m/${store.id}/comments/dish/${dish.id}?write=1`} className="flex min-h-11 items-center gap-1 text-sm text-leaf"><PenLine size={16} />写评论</Link>
+      {comments.length > 0 ? comments.map((comment) => <CommentEntry key={comment.id} comment={comment} dishNames={new Map(menu.dishes.map((item) => [item.id, item.name]))} />) : <p className="py-8 text-center text-sm text-neutral-500">这道菜还没有评论。</p>}
     </section>
     <footer className="fixed inset-x-0 bottom-0 z-20 mx-auto flex w-full max-w-[480px] items-center gap-3 border-t bg-white px-4 pt-3 pb-[max(12px,env(safe-area-inset-bottom))]">
       <Link to={`/m/${store.id}/checkout`} aria-label={`去结算，购物车${quantity}份`} title="去结算" className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border"><ShoppingBag size={22} />{quantity > 0 && <span className="absolute -right-1 -top-1 rounded-full bg-citrus px-1.5 text-xs font-medium">{quantity}</span>}</Link>

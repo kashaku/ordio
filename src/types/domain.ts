@@ -193,6 +193,7 @@ export interface Comment {
   images: string[];
   selectedDishIds: ID[];
   commentedDishId: ID | null;
+  dishNames?: Record<ID, string>;
   createdAt: ISODateTime;
 }
 

@@ -2,6 +2,8 @@ import type { Comment, Menu, MenuTemplate, OrdioData, Store } from '../types/dom
 
 const createdAt = '2026-10-08T12:00:00.000Z';
 
+export const localUser = { id: 'local-user-001', nickname: '本地顾客' };
+
 export const demoStore: Store = {
   id: 'demo-store-001',
   name: '禾间小馆',
