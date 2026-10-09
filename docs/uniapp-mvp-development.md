@@ -23,6 +23,7 @@
 | 演示入口 | `pages/index/index` |
 | 商家工作台 | `pages/merchant/index` |
 | 扫码入口 | `pages/customer/scan` |
+| 门店主页 | `pages/customer/storefront?storeId=store-demo` |
 | 顾客菜单 | `pages/customer/menu?storeId=store-demo` |
 | 确认订单 | `pages/customer/checkout?storeId=store-demo` |
 | 订单结果 | `pages/customer/order-detail?orderId=order-xxx` |
@@ -37,11 +38,17 @@ ordio:mvp:version
 ordio:mvp:stores
 ordio:mvp:draft-menus
 ordio:mvp:published-menus
+ordio:mvp:draft-storefronts
+ordio:mvp:published-storefronts
 ordio:mvp:carts
 ordio:mvp:orders
 ```
 
-页面通过 `repository.js` 和 `order-service.js` 读写数据。草稿发布时深拷贝为已发布菜单，顾客只能读取已发布内容。
+页面通过 `repository.js` 和 `order-service.js` 读写数据。`repository.js` 是稳定调用入口，当前默认适配器为 `local-repository.js`；页面不直接访问 `uni.getStorageSync` 或 `uni.setStorageSync`。后续接入 CloudBase 时替换适配器，不改页面调用方向。
+
+`repository.js` 当前约定了店铺、菜单、购物车和订单所需的方法，并在切换适配器时检查接口是否完整。`local-repository.js` 保留现有缓存键和数据结构，因此本次拆分不会重置已存在的演示数据。草稿发布时深拷贝为已发布菜单，顾客只能读取已发布内容。
+
+门店主页同样使用草稿和发布副本。商家可选择模板和品牌色，编辑首屏文案，控制公告、招牌推荐、品牌故事、到店信息四类区块的显隐和顺序，并从菜单选择最多四个招牌菜。顾客主页只读取已发布副本。
 
 店铺资料和菜单草稿分开保存。店铺资料保存后立即对顾客页生效；分类、菜品和规格只有发布后才进入顾客菜单。
 

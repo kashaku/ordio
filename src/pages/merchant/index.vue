@@ -3,7 +3,8 @@
     <view v-if="loading" class="empty-state">正在读取商家数据…</view>
     <template v-else>
       <view class="status-card">
-        <view>
+        <view class="status-group">
+          <view>
           <text class="status-label">当前菜单</text>
           <text class="status-value" :class="{ published: publishStatus === '已发布' }">
             {{ publishStatus }}
@@ -11,8 +12,15 @@
           <text v-if="published?.publishedAt" class="status-time">
             最近发布 {{ formatDate(published.publishedAt) }}
           </text>
+          </view>
+          <view>
+            <text class="status-label">门店主页</text>
+            <text class="status-value" :class="{ published: homePublishStatus === '已发布' }">
+              {{ homePublishStatus }}
+            </text>
+          </view>
         </view>
-        <button class="preview-button" size="mini" @tap="previewCustomer">顾客预览</button>
+        <button class="preview-button" size="mini" @tap="previewStorefront">主页预览</button>
       </view>
 
       <view class="section card">
@@ -52,6 +60,104 @@
         <view class="section-heading">
           <view>
             <text class="section-index">02</text>
+            <text class="section-title">主页搭建</text>
+          </view>
+          <text class="section-count">{{ homePublishStatus }}</text>
+        </view>
+
+        <text class="builder-help">选择模板后调整品牌色、首屏文案和内容区块，无需从空白页面开始。</text>
+
+        <text class="field-label">页面模板</text>
+        <scroll-view class="template-scroll" scroll-x enable-flex>
+          <view
+            v-for="template in storefrontTemplates"
+            :key="template.id"
+            class="template-option"
+            :class="[`template-choice-${template.id}`, { active: homeDraft.templateId === template.id }]"
+            @tap="chooseTemplate(template)"
+          >
+            <view class="template-swatch" :style="{ backgroundColor: template.defaultAccent }" />
+            <text class="template-name">{{ template.name }}</text>
+            <text class="template-description">{{ template.description }}</text>
+          </view>
+        </scroll-view>
+
+        <text class="field-label">品牌色</text>
+        <view class="color-row">
+          <view
+            v-for="color in storefrontAccentColors"
+            :key="color"
+            class="color-option"
+            :class="{ active: homeDraft.accentColor === color }"
+            :style="{ backgroundColor: color }"
+            @tap="setAccent(color)"
+          />
+        </view>
+
+        <text class="field-label">首屏短标</text>
+        <input v-model="homeDraft.hero.eyebrow" class="field-input" maxlength="20" @input="markHomeDirty" />
+        <text class="field-label">主页标题</text>
+        <input v-model="homeDraft.hero.title" class="field-input" maxlength="32" @input="markHomeDirty" />
+        <text class="field-label">主页副标题</text>
+        <textarea v-model="homeDraft.hero.subtitle" class="field-textarea short" maxlength="80" @input="markHomeDirty" />
+        <text class="field-label">点餐按钮文案</text>
+        <input v-model="homeDraft.hero.buttonText" class="field-input" maxlength="12" @input="markHomeDirty" />
+
+        <view class="block-builder-heading">
+          <view>
+            <text class="field-label">主页区块</text>
+            <text class="builder-help">可以隐藏区块，或调整顾客看到的先后顺序。</text>
+          </view>
+        </view>
+
+        <view v-for="(block, index) in homeDraft.blocks" :key="block.id" class="builder-block">
+          <view class="builder-block-top">
+            <view>
+              <text class="builder-block-type">{{ blockTypeName(block.type) }}</text>
+              <text class="builder-block-order">第 {{ index + 1 }} 屏</text>
+            </view>
+            <view class="block-actions">
+              <button size="mini" :disabled="index === 0" @tap="moveBlock(index, -1)">上移</button>
+              <button size="mini" :disabled="index === homeDraft.blocks.length - 1" @tap="moveBlock(index, 1)">下移</button>
+              <switch color="#F5B000" :checked="block.visible" @change="toggleBlock(block, $event)" />
+            </view>
+          </view>
+          <input v-model="block.title" class="field-input compact" maxlength="24" @input="markHomeDirty" />
+          <textarea
+            v-if="block.type === 'notice' || block.type === 'story'"
+            v-model="block.content"
+            class="field-textarea short"
+            maxlength="160"
+            @input="markHomeDirty"
+          />
+        </view>
+
+        <view class="featured-picker">
+          <text class="field-label">招牌菜选择</text>
+          <text class="builder-help">最多选择 4 个，显示在主页横向推荐区。</text>
+          <view class="featured-options">
+            <view
+              v-for="dish in draft.dishes"
+              :key="dish.id"
+              class="featured-option"
+              :class="{ active: homeDraft.featuredDishIds.includes(dish.id) }"
+              @tap="toggleFeaturedDish(dish.id)"
+            >
+              {{ dish.name }}
+            </view>
+          </view>
+        </view>
+
+        <view class="homepage-actions">
+          <button class="secondary-button" :loading="savingHome" @tap="saveHomepageDraft">保存主页草稿</button>
+          <button class="primary-button" :loading="publishingHome" @tap="publishHomepage">发布主页</button>
+        </view>
+      </view>
+
+      <view class="section card">
+        <view class="section-heading">
+          <view>
+            <text class="section-index">03</text>
             <text class="section-title">菜品分类</text>
           </view>
           <text class="section-count">{{ draft.categories.length }} 个</text>
@@ -71,7 +177,7 @@
       <view class="section card">
         <view class="section-heading">
           <view>
-            <text class="section-index">03</text>
+            <text class="section-index">04</text>
             <text class="section-title">菜品和规格</text>
           </view>
           <button class="small-primary" size="mini" :disabled="!draft.categories.length" @tap="openDishEditor()">
@@ -172,13 +278,18 @@ import { computed, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 
 import {
+  getDraftStorefront,
   getDraftMenu,
   getPublishedMenu,
+  getPublishedStorefront,
   getStore,
   publishMenu,
+  publishStorefront,
   saveDraftMenu,
+  saveDraftStorefront,
   saveStore,
 } from '../../services/repository'
+import { storefrontAccentColors, storefrontTemplates } from '../../data/storefront-templates'
 import { createId } from '../../utils/id'
 import { choosePersistentImage } from '../../utils/media'
 import { centsToYuanInput, formatMoney, parseYuanToCents } from '../../utils/money'
@@ -188,8 +299,11 @@ const loading = ref(true)
 const savingStore = ref(false)
 const savingDraft = ref(false)
 const publishing = ref(false)
+const savingHome = ref(false)
+const publishingHome = ref(false)
 const storeDirty = ref(false)
 const menuDirty = ref(false)
+const homeDirty = ref(false)
 const storeForm = ref({
   id: STORE_ID,
   name: '',
@@ -199,6 +313,8 @@ const storeForm = ref({
 })
 const draft = ref({ categories: [], dishes: [] })
 const published = ref(null)
+const homeDraft = ref(null)
+const publishedHome = ref(null)
 const newCategoryName = ref('')
 const dishForm = ref(null)
 const editingDishId = ref('')
@@ -228,20 +344,37 @@ const publishStatus = computed(() => {
   return draftTime > publishedTime ? '有未发布修改' : '已发布'
 })
 
+const homePublishStatus = computed(() => {
+  if (!publishedHome.value) {
+    return '未发布'
+  }
+  if (homeDirty.value) {
+    return '有未发布修改'
+  }
+  const draftTime = new Date(homeDraft.value?.updatedAt || 0).getTime()
+  const publishedTime = new Date(publishedHome.value.publishedAt || 0).getTime()
+  return draftTime > publishedTime ? '有未发布修改' : '已发布'
+})
+
 onShow(loadPage)
 
 async function loadPage() {
   loading.value = true
-  const [store, draftMenu, publishedMenu] = await Promise.all([
+  const [store, draftMenu, publishedMenu, draftStorefront, publishedStorefront] = await Promise.all([
     getStore(STORE_ID),
     getDraftMenu(STORE_ID),
     getPublishedMenu(STORE_ID),
+    getDraftStorefront(STORE_ID),
+    getPublishedStorefront(STORE_ID),
   ])
   storeForm.value = store
   draft.value = draftMenu
   published.value = publishedMenu
+  homeDraft.value = draftStorefront
+  publishedHome.value = publishedStorefront
   storeDirty.value = false
   menuDirty.value = false
+  homeDirty.value = false
   loading.value = false
 }
 
@@ -255,6 +388,61 @@ function markStoreDirty() {
 
 function markMenuDirty() {
   menuDirty.value = true
+}
+
+function markHomeDirty() {
+  homeDirty.value = true
+}
+
+function chooseTemplate(template) {
+  homeDraft.value.templateId = template.id
+  homeDraft.value.accentColor = template.defaultAccent
+  markHomeDirty()
+}
+
+function setAccent(color) {
+  homeDraft.value.accentColor = color
+  markHomeDirty()
+}
+
+function blockTypeName(type) {
+  return {
+    notice: '门店公告',
+    featured: '招牌推荐',
+    story: '品牌故事',
+    storeInfo: '到店信息',
+  }[type] || '内容区块'
+}
+
+function moveBlock(index, offset) {
+  const target = index + offset
+  if (target < 0 || target >= homeDraft.value.blocks.length) {
+    return
+  }
+  const blocks = [...homeDraft.value.blocks]
+  ;[blocks[index], blocks[target]] = [blocks[target], blocks[index]]
+  homeDraft.value.blocks = blocks
+  markHomeDirty()
+}
+
+function toggleBlock(block, event) {
+  block.visible = event.detail.value
+  markHomeDirty()
+}
+
+function toggleFeaturedDish(dishId) {
+  const selected = homeDraft.value.featuredDishIds
+  if (selected.includes(dishId)) {
+    homeDraft.value.featuredDishIds = selected.filter((id) => id !== dishId)
+    markHomeDirty()
+    return
+  }
+  if (selected.length >= 4) {
+    uni.showToast({ title: '最多选择 4 个招牌菜', icon: 'none' })
+    return
+  }
+  homeDraft.value.featuredDishIds = [...selected, dishId]
+  markHomeDirty()
 }
 
 function categoryName(categoryId) {
@@ -508,6 +696,43 @@ async function saveDraftOnly(showToast = true) {
   }
 }
 
+async function saveHomepageDraft(showToast = true) {
+  savingHome.value = true
+  try {
+    homeDraft.value = await saveDraftStorefront(homeDraft.value)
+    homeDirty.value = false
+    if (showToast) {
+      uni.showToast({ title: '主页草稿已保存', icon: 'success' })
+    }
+    return true
+  } catch (error) {
+    uni.showToast({ title: error.message || '保存失败', icon: 'none' })
+    return false
+  } finally {
+    savingHome.value = false
+  }
+}
+
+async function publishHomepage() {
+  publishingHome.value = true
+  try {
+    if (storeDirty.value && !(await saveStoreOnly(false))) {
+      return
+    }
+    if (!(await saveHomepageDraft(false))) {
+      return
+    }
+    publishedHome.value = await publishStorefront(STORE_ID)
+    homeDraft.value = await getDraftStorefront(STORE_ID)
+    homeDirty.value = false
+    uni.showToast({ title: '门店主页已发布', icon: 'success' })
+  } catch (error) {
+    uni.showToast({ title: error.message || '发布失败', icon: 'none' })
+  } finally {
+    publishingHome.value = false
+  }
+}
+
 async function publish() {
   publishing.value = true
   try {
@@ -528,14 +753,14 @@ async function publish() {
   }
 }
 
-function previewCustomer() {
-  uni.navigateTo({ url: `/pages/customer/menu?storeId=${STORE_ID}` })
+function previewStorefront() {
+  uni.navigateTo({ url: `/pages/customer/storefront?storeId=${STORE_ID}` })
 }
 </script>
 
 <style scoped>
 .merchant-page {
-  padding-bottom: 170rpx;
+  padding-bottom: 60rpx;
 }
 
 .status-card {
@@ -546,6 +771,11 @@ function previewCustomer() {
   border-radius: 18rpx;
   background: #171717;
   color: #fff;
+}
+
+.status-group {
+  display: flex;
+  gap: 42rpx;
 }
 
 .status-label,
@@ -600,6 +830,170 @@ function previewCustomer() {
 .section-count {
   color: #746f67;
   font-size: 23rpx;
+}
+
+.builder-help {
+  display: block;
+  color: #7a7268;
+  font-size: 22rpx;
+  line-height: 1.6;
+}
+
+.template-scroll {
+  display: flex;
+  width: 100%;
+  white-space: nowrap;
+}
+
+.template-option {
+  display: inline-flex;
+  width: 260rpx;
+  min-height: 190rpx;
+  margin-right: 16rpx;
+  padding: 18rpx;
+  border: 2rpx solid #e3d9ca;
+  border-radius: 16rpx;
+  vertical-align: top;
+  flex-direction: column;
+  white-space: normal;
+}
+
+.template-option.active {
+  border-color: #171717;
+  box-shadow: inset 0 0 0 2rpx #171717;
+}
+
+.template-swatch {
+  width: 100%;
+  height: 58rpx;
+  border-radius: 9rpx;
+}
+
+.template-name {
+  margin-top: 14rpx;
+  font-weight: 800;
+}
+
+.template-description {
+  margin-top: 7rpx;
+  color: #7a7268;
+  font-size: 20rpx;
+  line-height: 1.45;
+}
+
+.color-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18rpx;
+}
+
+.color-option {
+  width: 58rpx;
+  height: 58rpx;
+  border: 7rpx solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1rpx #d6cabb;
+}
+
+.color-option.active {
+  box-shadow: 0 0 0 5rpx #171717;
+}
+
+.field-textarea.short {
+  height: 110rpx;
+  min-height: 110rpx;
+}
+
+.block-builder-heading {
+  margin-top: 30rpx;
+}
+
+.builder-block {
+  margin-top: 16rpx;
+  padding: 20rpx;
+  border: 1rpx solid #e1d7c8;
+  border-radius: 14rpx;
+  background: #fbf8f2;
+}
+
+.builder-block-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.builder-block-type,
+.builder-block-order {
+  display: block;
+}
+
+.builder-block-type {
+  font-weight: 800;
+}
+
+.builder-block-order {
+  margin-top: 4rpx;
+  color: #8a8278;
+  font-size: 20rpx;
+}
+
+.block-actions {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+}
+
+.block-actions button {
+  padding: 11rpx 13rpx;
+  background: #eee8de;
+  font-size: 21rpx;
+}
+
+.block-actions switch {
+  transform: scale(0.72);
+}
+
+.field-input.compact {
+  height: 66rpx;
+  margin-top: 16rpx;
+  line-height: 66rpx;
+}
+
+.featured-picker {
+  margin-top: 26rpx;
+}
+
+.featured-options {
+  display: flex;
+  margin-top: 14rpx;
+  flex-wrap: wrap;
+  gap: 12rpx;
+}
+
+.featured-option {
+  padding: 14rpx 18rpx;
+  border: 1rpx solid #ddd3c3;
+  border-radius: 999rpx;
+  background: #fff;
+  color: #625d55;
+  font-size: 22rpx;
+}
+
+.featured-option.active {
+  border-color: #171717;
+  background: #171717;
+  color: #fff;
+}
+
+.homepage-actions {
+  display: grid;
+  margin-top: 30rpx;
+  grid-template-columns: 1fr 1fr;
+  gap: 14rpx;
+}
+
+.homepage-actions button {
+  padding: 22rpx 12rpx;
 }
 
 .cover-row,
@@ -756,17 +1150,14 @@ function previewCustomer() {
 }
 
 .action-bar {
-  position: fixed;
-  z-index: 30;
-  right: 0;
-  bottom: 0;
-  left: 0;
   display: grid;
-  padding: 18rpx 24rpx calc(18rpx + env(safe-area-inset-bottom));
+  margin-top: 24rpx;
+  padding: 18rpx;
   grid-template-columns: 1fr 1.4fr;
   gap: 16rpx;
-  border-top: 1rpx solid #e8e1d5;
-  background: #fff;
+  border: 1rpx solid #e8e1d5;
+  border-radius: 16rpx;
+  background: rgba(255, 255, 255, 0.96);
 }
 
 .action-bar button {

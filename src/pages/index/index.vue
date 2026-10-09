@@ -1,187 +1,144 @@
 <template>
-  <view class="page home">
-    <view class="brand-block">
-      <text class="eyebrow">ORDIO LOCAL MVP</text>
-      <text class="title">一台设备，跑通一次点餐</text>
-      <text class="subtitle">商家维护并发布菜单，顾客随后完成选餐、下单和模拟付款。</text>
+  <view class="welcome-page">
+    <view class="brand-mark">O</view>
+    <text class="brand-name">ORDIO</text>
+
+    <view class="welcome-copy">
+      <text class="eyebrow">SCAN · DISCOVER · ORDER</text>
+      <text class="title">每家店，<br />都有自己的味道。</text>
+      <text class="subtitle">扫描门店桌牌，进入商家专属主页，查看招牌推荐并开始点餐。</text>
     </view>
 
-    <view class="role-grid">
-      <view class="role-card merchant-card" @tap="goMerchant">
-        <text class="role-index">01</text>
-        <text class="role-title">商家端</text>
-        <text class="role-description">编辑店铺、分类、菜品和规格，然后发布菜单。</text>
-        <text class="role-action">进入工作台 →</text>
-      </view>
+    <button class="scan-button" @tap="goScan">扫码进入门店</button>
 
-      <view class="role-card customer-card" @tap="goCustomer">
-        <text class="role-index">02</text>
-        <text class="role-title">顾客端</text>
-        <text class="role-description">扫码或进入演示店铺，选择菜品并提交订单。</text>
-        <text class="role-action">开始点餐 →</text>
+    <view class="feature-row">
+      <view class="feature-item">
+        <text class="feature-index">01</text>
+        <text>门店专属主页</text>
+      </view>
+      <view class="feature-item">
+        <text class="feature-index">02</text>
+        <text>实时发布菜单</text>
+      </view>
+      <view class="feature-item">
+        <text class="feature-index">03</text>
+        <text>便捷点餐下单</text>
       </view>
     </view>
-
-    <view class="tool-card card">
-      <view>
-        <text class="tool-title">演示数据</text>
-        <text class="tool-copy">重置会清空本机购物车和订单，恢复初始菜单。</text>
-      </view>
-      <button class="reset-button" size="mini" @tap="confirmReset">重置</button>
-    </view>
-
-    <text class="local-note">当前版本仅保存到本机微信小程序缓存，不支持跨设备同步。</text>
   </view>
 </template>
 
 <script setup>
-import { onShow } from '@dcloudio/uni-app'
-
-import { initializeRepository, resetDemoData } from '../../services/repository'
-import { useCartStore } from '../../stores/cart'
-
-const cartStore = useCartStore()
-
-onShow(() => {
-  initializeRepository()
-})
-
-function goMerchant() {
-  uni.navigateTo({ url: '/pages/merchant/index' })
-}
-
-function goCustomer() {
+function goScan() {
   uni.navigateTo({ url: '/pages/customer/scan' })
-}
-
-function confirmReset() {
-  uni.showModal({
-    title: '重置演示数据',
-    content: '店铺、菜单、购物车和订单都会恢复为初始状态。',
-    confirmColor: '#B85C38',
-    success: async (result) => {
-      if (!result.confirm) {
-        return
-      }
-      await resetDemoData()
-      cartStore.resetState()
-      uni.showToast({ title: '已重置', icon: 'success' })
-    },
-  })
 }
 </script>
 
 <style scoped>
-.home {
-  padding-top: 76rpx;
+.welcome-page {
+  position: relative;
+  display: flex;
+  min-height: 100vh;
+  padding: 72rpx 38rpx calc(48rpx + env(safe-area-inset-bottom));
+  flex-direction: column;
+  overflow: hidden;
+  background: #171717;
+  color: #fff;
 }
 
-.brand-block {
-  padding: 24rpx 4rpx 48rpx;
+.welcome-page::after {
+  position: absolute;
+  width: 520rpx;
+  height: 520rpx;
+  right: -230rpx;
+  bottom: 170rpx;
+  border: 80rpx solid #f5b000;
+  border-radius: 50%;
+  content: '';
+  opacity: 0.9;
+}
+
+.brand-mark {
+  display: flex;
+  width: 70rpx;
+  height: 70rpx;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #f5b000;
+  color: #171717;
+  font-size: 36rpx;
+  font-weight: 900;
+}
+
+.brand-name {
+  margin-top: 18rpx;
+  font-size: 20rpx;
+  font-weight: 800;
+  letter-spacing: 7rpx;
+}
+
+.welcome-copy {
+  position: relative;
+  z-index: 2;
+  margin-top: 150rpx;
 }
 
 .eyebrow {
-  color: #8d6a22;
-  font-size: 22rpx;
+  color: #f5b000;
+  font-size: 20rpx;
   font-weight: 700;
-  letter-spacing: 4rpx;
+  letter-spacing: 3rpx;
 }
 
 .title {
   display: block;
-  margin-top: 18rpx;
-  font-size: 56rpx;
+  margin-top: 24rpx;
+  font-size: 66rpx;
   font-weight: 800;
-  line-height: 1.15;
+  line-height: 1.2;
 }
 
 .subtitle {
   display: block;
-  margin-top: 24rpx;
-  color: #625d55;
-  line-height: 1.7;
-}
-
-.role-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 24rpx;
-}
-
-.role-card {
-  min-height: 280rpx;
-  padding: 32rpx;
-  border-radius: 20rpx;
-}
-
-.merchant-card {
-  color: #fff;
-  background: #171717;
-}
-
-.customer-card {
-  color: #171717;
-  background: #f5b000;
-}
-
-.role-index {
-  opacity: 0.6;
-  font-size: 22rpx;
-}
-
-.role-title {
-  display: block;
+  max-width: 560rpx;
   margin-top: 30rpx;
-  font-size: 42rpx;
+  color: #c8c1b7;
+  line-height: 1.75;
+}
+
+.scan-button {
+  position: relative;
+  z-index: 2;
+  margin-top: 60rpx;
+  padding: 27rpx;
+  background: #f5b000;
+  color: #171717;
   font-weight: 800;
 }
 
-.role-description {
-  display: block;
-  margin-top: 14rpx;
-  max-width: 570rpx;
-  opacity: 0.78;
-  line-height: 1.55;
+.feature-row {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  margin-top: auto;
+  padding-top: 70rpx;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12rpx;
 }
 
-.role-action {
-  display: block;
-  margin-top: 32rpx;
-  font-weight: 700;
-}
-
-.tool-card {
+.feature-item {
   display: flex;
-  margin-top: 28rpx;
-  padding: 26rpx;
-  align-items: center;
-  justify-content: space-between;
+  color: #d6d0c7;
+  font-size: 21rpx;
+  line-height: 1.45;
+  flex-direction: column;
 }
 
-.tool-title {
-  display: block;
-  font-weight: 700;
-}
-
-.tool-copy {
-  display: block;
-  margin-top: 8rpx;
-  color: #746f67;
-  font-size: 22rpx;
-}
-
-.reset-button {
-  padding: 15rpx 23rpx;
-  color: #b85c38;
-  background: #f7ede8;
-}
-
-.local-note {
-  display: block;
-  padding: 34rpx 12rpx;
-  color: #8b857b;
-  font-size: 22rpx;
-  line-height: 1.6;
-  text-align: center;
+.feature-index {
+  margin-bottom: 12rpx;
+  color: #f5b000;
+  font-size: 19rpx;
+  font-weight: 800;
 }
 </style>

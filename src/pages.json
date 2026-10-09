@@ -19,6 +19,13 @@
       }
     },
     {
+      "path": "pages/customer/storefront",
+      "style": {
+        "navigationBarTitleText": "门店主页",
+        "enablePullDownRefresh": true
+      }
+    },
+    {
       "path": "pages/customer/menu",
       "style": {
         "navigationBarTitleText": "菜单",

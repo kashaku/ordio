@@ -9,16 +9,15 @@
         <text>扫</text>
       </view>
       <text class="title">扫描店铺二维码</text>
-      <text class="description">二维码只需要携带店铺标识。开发阶段可以直接进入默认演示店铺。</text>
+      <text class="description">请扫描桌牌或门店提供的二维码，进入对应门店主页。</text>
       <button class="primary-button scan-button" :loading="scanning" @tap="scanCode">打开扫码</button>
-      <button class="secondary-button demo-button" @tap="openStore('store-demo')">进入演示店铺</button>
     </view>
 
     <view class="tips card">
-      <text class="tips-title">支持的内容</text>
-      <text class="tip-line">store-demo</text>
-      <text class="tip-line">https://example.com/menu?storeId=store-demo</text>
-      <text class="tip-line">scene=storeId%3Dstore-demo</text>
+      <text class="tips-title">扫码后可以</text>
+      <text class="tip-line">查看商家主页与招牌推荐</text>
+      <text class="tip-line">浏览当前已发布菜单</text>
+      <text class="tip-line">进入购物车并完成下单</text>
     </view>
   </view>
 </template>
@@ -49,7 +48,7 @@ async function openStore(storeId) {
     return
   }
   uni.navigateTo({
-    url: `/pages/customer/menu?storeId=${encodeURIComponent(storeId)}`,
+    url: `/pages/customer/storefront?storeId=${encodeURIComponent(storeId)}`,
   })
 }
 
@@ -129,15 +128,8 @@ function scanCode() {
   line-height: 1.6;
 }
 
-.scan-button,
-.demo-button {
+.scan-button {
   padding: 24rpx;
-}
-
-.demo-button {
-  margin-top: 18rpx;
-  color: #fff;
-  background: #343434;
 }
 
 .tips {
@@ -158,8 +150,6 @@ function scanCode() {
 .tip-line {
   margin-top: 9rpx;
   color: #746f67;
-  font-family: monospace;
-  font-size: 22rpx;
-  word-break: break-all;
+  font-size: 24rpx;
 }
 </style>

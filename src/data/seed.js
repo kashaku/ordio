@@ -1,4 +1,6 @@
-export const DATA_VERSION = 1
+import { createDefaultStorefront } from './storefront-templates'
+
+export const DATA_VERSION = 2
 
 export function createSeedState() {
   const now = new Date().toISOString()
@@ -90,11 +92,23 @@ export function createSeedState() {
     status: 'published',
   }
 
+  const draftStorefront = {
+    ...createDefaultStorefront(store.id, dishes.map((dish) => dish.id)),
+    updatedAt: now,
+  }
+  const publishedStorefront = {
+    ...JSON.parse(JSON.stringify(draftStorefront)),
+    status: 'published',
+    publishedAt: now,
+  }
+
   return {
     version: DATA_VERSION,
     stores: [store],
     draftMenus: { [store.id]: draftMenu },
     publishedMenus: { [store.id]: publishedMenu },
+    draftStorefronts: { [store.id]: draftStorefront },
+    publishedStorefronts: { [store.id]: publishedStorefront },
     carts: {},
     orders: [],
   }
