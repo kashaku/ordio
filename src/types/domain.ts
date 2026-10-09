@@ -207,6 +207,7 @@ export interface MenuTemplate {
 }
 
 export interface OrdioData {
+  seedVersion?: number;
   stores: Store[];
   menus: Menu[];
   templates: MenuTemplate[];

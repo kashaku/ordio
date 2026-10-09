@@ -45,7 +45,7 @@ function DetailContent({ store, menu, dish, comments }: DetailContentProps) {
       add(store.id, dish.id, specs);
       setFeedback('已加入购物车');
     } catch {
-      setError('购物车未能保存，请检查本地存储空间后重试。');
+      setError('购物车未能保存，请检查存储空间后重试。');
     }
   }
 

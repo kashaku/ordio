@@ -1,5 +1,6 @@
 import { seedData } from '../mock/seedData';
 import type { OrdioData } from '../types/domain';
+import { upgradeSeedData } from './seedUpgrade';
 
 const STORAGE_KEY = 'ordio.local-data.v1';
 
@@ -34,7 +35,7 @@ export function readOrdioData(): OrdioData {
 
   try {
     const parsed: unknown = JSON.parse(raw);
-    return isOrdioData(parsed) ? parsed : cloneData(seedData);
+    return isOrdioData(parsed) ? upgradeSeedData(parsed) : cloneData(seedData);
   } catch {
     return cloneData(seedData);
   }

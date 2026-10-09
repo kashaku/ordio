@@ -72,7 +72,7 @@ const steps: Array<{ id: MerchantStep; title: string; description: string }> = [
 function getPrimaryStore(data: OrdioData): StoreModel {
   const [store] = data.stores;
   if (!store) {
-    throw new Error('Mock data must include at least one store.');
+    throw new Error('至少需要一家店铺。');
   }
   return store;
 }
@@ -82,7 +82,7 @@ function getStoreMenu(data: OrdioData, storeId: string, selectedMenuId: string |
     data.menus.find((item) => item.storeId === storeId && item.id === selectedMenuId) ??
     data.menus.find((item) => item.storeId === storeId);
   if (!menu) {
-    throw new Error(`Mock data must include a menu for store ${storeId}.`);
+    throw new Error('当前店铺暂无菜单。');
   }
   return menu;
 }
@@ -171,9 +171,13 @@ function createMenuFromTemplate(storeId: string, template: MenuTemplate, sourceM
     templateId: template.id,
     status: 'draft',
     canvasConfig: template.canvasConfig,
-    nodes: template.nodes.map((node) =>
-      node.type === 'storeInfo' ? { ...node, binding: { kind: 'store', storeId } } : node,
-    ),
+    nodes: template.nodes.map((node) => {
+      if (node.type === 'storeInfo') return { ...node, binding: { kind: 'store', storeId } };
+      if ('binding' in node && node.binding.kind === 'category' && sourceMenu.categories[0]) {
+        return { ...node, binding: { kind: 'category', categoryId: sourceMenu.categories[0].id } };
+      }
+      return node;
+    }),
     categories: sourceMenu.categories,
     dishes: sourceMenu.dishes,
     createdAt: now,
@@ -297,14 +301,15 @@ function createInsertedNode(type: 'text' | 'image' | 'rect' | 'container' | 'sto
 export function MerchantPage() {
   const [data, setData] = useState<OrdioData>(() => initializeOrdioData());
   const [activeStep, setActiveStep] = useState<MerchantStep>('store');
-  const [savedMessage, setSavedMessage] = useState('已加载本地演示数据');
+  const [savedMessage, setSavedMessage] = useState('店铺信息已加载');
+  const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
   const [selectedMenuId, setSelectedMenuId] = useState<string | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [clipboardNode, setClipboardNode] = useState<EditorNode | null>(null);
   const [undoStack, setUndoStack] = useState<Menu[]>([]);
   const [redoStack, setRedoStack] = useState<Menu[]>([]);
 
-  const store = getPrimaryStore(data);
+  const store = data.stores.find((item) => item.id === selectedStoreId) ?? getPrimaryStore(data);
   const storeMenus = data.menus.filter((item) => item.storeId === store.id);
   const menu = getStoreMenu(data, store.id, selectedMenuId);
   const selectedTemplate = data.templates.find((template) => template.id === menu.templateId) ?? data.templates[0];
@@ -676,18 +681,27 @@ export function MerchantPage() {
             </div>
             <div>
               <h1 className="text-lg font-semibold">Ordio 商家工作台</h1>
-              <p className="text-sm text-ink/55">PC 端演示：店铺编辑、模板菜单、发布二维码</p>
+              <p className="text-sm text-ink/55">店铺编辑、菜单管理、发布二维码</p>
             </div>
           </div>
 
           <div className="flex items-center gap-3 text-sm">
+            <select aria-label="当前店铺" value={store.id} onChange={(event) => {
+              setSelectedStoreId(event.target.value);
+              setSelectedMenuId(null);
+              setSelectedNodeId(null);
+              setClipboardNode(null);
+              setUndoStack([]);
+              setRedoStack([]);
+              setSavedMessage('店铺已切换');
+            }} className="max-w-[180px] rounded-md border border-ink/10 bg-white px-3 py-2">{data.stores.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
             <span className="inline-flex items-center gap-2 rounded-md bg-leaf/10 px-3 py-2 text-leaf">
               <CheckCircle2 className="h-4 w-4" />
               {savedMessage}
             </span>
             <a
               className="inline-flex items-center gap-2 rounded-md border border-ink/10 bg-porcelain px-3 py-2 font-medium hover:bg-rice"
-              href={customerUrl}
+              href="/m"
               target="_blank"
               rel="noreferrer"
             >
@@ -869,7 +883,7 @@ function StoreEditor({
           </div>
           <span className="inline-flex items-center gap-2 rounded-md bg-leaf/10 px-3 py-2 text-sm text-leaf">
             <Save className="h-4 w-4" />
-            自动保存到本地
+            自动保存
           </span>
         </div>
 
@@ -1784,7 +1798,7 @@ function PublishPanel({ customerUrl, menu, onDownloadQrCode, onPublish, store }:
   return (
     <section className="rounded-lg border border-ink/10 bg-porcelain p-5 shadow-sm">
       <h2 className="text-xl font-semibold">发布二维码</h2>
-      <p className="mt-1 text-sm text-ink/55">顾客扫码后会进入对应店铺菜单页面。当前只生成本地演示链接。</p>
+      <p className="mt-1 text-sm text-ink/55">顾客扫码后进入对应店铺菜单页面。</p>
 
       <div className="mt-5 grid grid-cols-[240px_1fr] gap-5">
         <div className="rounded-lg bg-rice p-5">
