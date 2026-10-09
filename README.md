@@ -43,4 +43,4 @@ npm run build:mp-weixin
 
 不包含后端、跨设备同步、微信登录、真实支付和动态小程序码。
 
-详细约束见 [docs/uniapp-mvp-development.md](docs/uniapp-mvp-development.md)。
+当前实现和验收见 [docs/uniapp-mvp-development.md](docs/uniapp-mvp-development.md)。真实运营版的系统拆分、数据库、权限、支付、UI 和分期计划见 [docs/production-roadmap.md](docs/production-roadmap.md)。

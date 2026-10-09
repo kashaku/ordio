@@ -18,7 +18,7 @@
 - `npm run build:mp-weixin`：成功；编译器版本 `5.26 (vue3)`。
 - 构建产物：7 个页面，AppID `wx3a13cbb8859858e6`，`compileType` 为 `miniprogram`。
 - 微信模拟器：商家发布、规格购物车、失效项清理、结算、下单、模拟付款、订单列表和重置后的初始状态均已检查。
-- 真机预览码：生成成功，包大小 `304695` 字节；手机扫码体验尚未人工确认。
+- 真机预览码：生成成功，包大小 `304695` 字节；用户已确认真机预览正常。
 - 最终 console 执行 `grep -i error` 无匹配输出。
 - `npm audit`：65 个问题（17 low、16 moderate、32 high）。`npm audit --omit=dev`：54 个问题（14 low、13 moderate、27 high）。未执行会破坏 DCloud 版本组的强制修复。
 
@@ -27,4 +27,9 @@
 - 构建会输出 Node 循环依赖警告：`Accessing non-existent property 'finally' of module exports inside circular dependency`，当前不影响产物生成。
 - 开发者工具热更新曾出现 WXML 与页面 JS 映射不同步；执行 `cleanCompileCache` 后完整刷新可恢复，修改页面结构后建议留意此现象。
 - `npm run devtools:open` 能定位本机 `cli.bat`，但传统 CLI 仍要求用户在“设置 → 安全”中开启服务端口；本次自动化验收改用已授权的 `wechatide` CLI。
-- 图片选择、相机扫码和手机真机完整流程依赖人工操作，尚未确认。
+- 图片选择和相机扫码依赖人工操作，尚未确认。
+
+## 2026-10-09 后续规划
+
+- 新增 `docs/production-roadmap.md`，规划顾客端与商家端分离、CloudBase MySQL、云函数、云存储、角色权限、真实订单和微信支付。
+- 路线图先以单店真实运营为目标，数据结构预留多门店能力；当前只完成规划，没有创建云环境、数据库或支付配置。
