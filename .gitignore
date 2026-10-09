@@ -10,6 +10,8 @@ lerna-debug.log*
 node_modules
 .DS_Store
 dist
+.playwright-cli/
+output/playwright/
 *.local
 project.private.config.json
 .env

@@ -1,0 +1,10 @@
+{
+  "$set": {
+    "store_id": "store-demo",
+    "name": "A01",
+    "area": "大厅",
+    "table_token": "tbl_7eJr2pkN4xQm9VaL6sTyBwUc",
+    "enabled": true,
+    "qr_file_id": ""
+  }
+}

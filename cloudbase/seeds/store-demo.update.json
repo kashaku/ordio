@@ -1,0 +1,9 @@
+{
+  "$set": {
+    "name": "禾间小馆",
+    "status": "active",
+    "owner_user_id": "d023402f6ac8b072018f899260422b42",
+    "address": "待商家完善",
+    "business_hours": "10:30-21:30"
+  }
+}

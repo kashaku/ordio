@@ -111,5 +111,8 @@ updated_at      date
 - `ordioApi`：已部署，运行时 `Nodejs16.13`，状态 `Active`。
 - 集合：`users`、`store_members`、`stores`、`tables` 已创建。
 - 索引：用户 OpenID、门店成员关系、桌台令牌等索引已创建并核对。
-- 待验证：在微信模拟器触发 `session.get`，写入当前开发者用户；随后写入试点门店、成员和桌台种子数据，验证 `entry.resolveTable` 的正常和异常分支。
+- `session.get`：已在微信模拟器显式调用成功，真实用户记录已创建。
+- 待验证：试点门店、成员和桌台种子写入正在等待开发者工具确认；确认后验证 `entry.resolveTable` 的正常和异常分支。
 - 云函数依赖审计：`wx-server-sdk@4.0.2` 的传递依赖仍有 1 个 moderate、5 个 high；强制修复会降级主依赖，本阶段不执行。
+
+开发种子文件位于 `cloudbase/seeds`。这些文件只用于当前开发环境，写入前仍需核对目标 AppID 和环境 ID；生产环境不得直接复用开发成员身份或桌台令牌。
