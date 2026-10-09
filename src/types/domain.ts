@@ -169,6 +169,16 @@ export interface Order {
   total: number;
   status: OrderStatus;
   createdAt: ISODateTime;
+  itemDetails?: OrderItemDetail[];
+}
+
+export interface OrderItemDetail {
+  dishId: ID;
+  name: string;
+  image: string;
+  quantity: number;
+  specNames: string[];
+  unitPrice: number;
 }
 
 export interface Comment {

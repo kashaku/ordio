@@ -31,7 +31,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import type { ChangeEvent, MouseEvent, ReactNode } from 'react';
 import { useMemo, useState } from 'react';
 
-import { initializeOrdioData, writeOrdioData } from '../storage/ordioStorage';
+import { initializeOrdioData, readOrdioData, writeOrdioData } from '../storage/ordioStorage';
 import type { Dish, EditorNode, Menu, MenuTemplate, OrdioData, Store as StoreModel, StoreExtraModule } from '../types';
 
 type MerchantStep = 'store' | 'template' | 'editor' | 'publish';
@@ -317,7 +317,8 @@ export function MerchantPage() {
 
   function persist(updater: (current: OrdioData) => OrdioData, message: string): void {
     setData((current) => {
-      const nextData = updater(current);
+      const latest = readOrdioData();
+      const nextData = updater({ ...current, orders: latest.orders, comments: latest.comments });
       writeOrdioData(nextData);
       return nextData;
     });
