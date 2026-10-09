@@ -1,0 +1,23 @@
+{
+  "name": "Ordio",
+  "appid": "",
+  "description": "本地扫码点餐演示小程序",
+  "versionName": "0.1.0",
+  "versionCode": "100",
+  "transformPx": false,
+  "mp-weixin": {
+    "appid": "wx3a13cbb8859858e6",
+    "libVersion": "3.17.2",
+    "setting": {
+      "urlCheck": false,
+      "es6": true,
+      "postcss": true,
+      "minified": false
+    },
+    "usingComponents": true
+  },
+  "uniStatistics": {
+    "enable": false
+  },
+  "vueVersion": "3"
+}

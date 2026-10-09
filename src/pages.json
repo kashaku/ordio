@@ -1,0 +1,53 @@
+{
+  "pages": [
+    {
+      "path": "pages/index/index",
+      "style": {
+        "navigationBarTitleText": "Ordio"
+      }
+    },
+    {
+      "path": "pages/merchant/index",
+      "style": {
+        "navigationBarTitleText": "商家工作台"
+      }
+    },
+    {
+      "path": "pages/customer/scan",
+      "style": {
+        "navigationBarTitleText": "扫码点餐"
+      }
+    },
+    {
+      "path": "pages/customer/menu",
+      "style": {
+        "navigationBarTitleText": "菜单",
+        "enablePullDownRefresh": true
+      }
+    },
+    {
+      "path": "pages/customer/checkout",
+      "style": {
+        "navigationBarTitleText": "确认订单"
+      }
+    },
+    {
+      "path": "pages/customer/order-detail",
+      "style": {
+        "navigationBarTitleText": "订单结果"
+      }
+    },
+    {
+      "path": "pages/customer/orders",
+      "style": {
+        "navigationBarTitleText": "历史订单"
+      }
+    }
+  ],
+  "globalStyle": {
+    "navigationBarTextStyle": "black",
+    "navigationBarTitleText": "Ordio",
+    "navigationBarBackgroundColor": "#FAF7F0",
+    "backgroundColor": "#FAF7F0"
+  }
+}
