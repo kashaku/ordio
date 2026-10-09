@@ -67,7 +67,7 @@ export function CommentComposer({ storeId, dishId, onClose, onPublished }: Comme
       onPublished();
     } catch (cause: unknown) {
       setError(cause instanceof DOMException && cause.name === 'QuotaExceededError'
-        ? '本地存储空间不足，请移除部分图片后重试。'
+        ? '存储空间不足，请移除部分图片后重试。'
         : cause instanceof Error ? cause.message : '评论未能保存，请重试。');
       submitLock.current = false;
     }

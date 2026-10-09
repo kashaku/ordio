@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
-import { Clock, MapPin, Minus, PenLine, Plus, ShoppingBag, Star, Store as StoreIcon, Trash2, X } from 'lucide-react';
+import { Clock, MapPin, Minus, PenLine, Plus, ScanLine, ShoppingBag, Star, Store as StoreIcon, Trash2, X } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
 
 import { readOrdioData } from '../storage/ordioStorage';
@@ -93,6 +93,7 @@ export function CustomerPage() {
       <header className="border-b border-neutral-200">
         {store.cover && <div className="h-36 overflow-hidden"><img src={store.cover} alt={`${store.name}封面`} className="h-full w-full object-cover" onError={(event) => { event.currentTarget.parentElement?.setAttribute('hidden', ''); }} /></div>}
         <div className="px-5 py-5">
+          <Link to="/m" title="扫码切换店铺" className="mb-3 flex min-h-11 w-fit items-center gap-2 text-sm text-leaf"><ScanLine size={18} />扫码点餐</Link>
           <div className="flex items-start gap-3"><div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-leaf text-white"><StoreIcon size={25} /></div><div className="min-w-0"><h1 className="break-words text-2xl font-bold">{store.name}</h1><p className="mt-1 text-sm leading-5 text-neutral-500">{store.description}</p></div></div>
           <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
             <span className="flex items-center gap-1 font-semibold"><Star size={14} className="fill-citrus text-citrus" />{store.rating.toFixed(1)}</span>

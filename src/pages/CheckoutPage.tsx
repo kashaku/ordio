@@ -108,21 +108,20 @@ export function CheckoutPage() {
   }
 
   if (!store) return <PageFrame storeId={storeId} title="结算"><EmptyState storeId={storeId} title="店铺不存在" message="请使用商家提供的二维码重新进入。" /></PageFrame>;
-  if (orderId && !order) return <PageFrame storeId={storeId} title="订单详情"><EmptyState storeId={storeId} title="订单不存在" message="请确认订单属于当前店铺，或查看本地订单列表。" /></PageFrame>;
+  if (orderId && !order) return <PageFrame storeId={storeId} title="订单详情"><EmptyState storeId={storeId} title="订单不存在" message="请确认订单属于当前店铺，或查看订单列表。" /></PageFrame>;
 
   if (order) return <PageFrame storeId={storeId} title="订单详情">
     <section className="border-b px-5 py-7">
-      <div className="flex items-center gap-3">{order.status === 'paid' ? <CheckCircle2 size={32} className="text-leaf" /> : <Wallet size={32} className="text-clay" />}<div><h2 className="text-xl font-semibold">{order.status === 'paid' ? '模拟付款成功' : order.status === 'pending' ? '订单已提交，待付款' : '订单已取消'}</h2><p className="mt-1 text-sm text-neutral-500">{store.name}</p></div></div>
-      <p className="mt-4 text-xs text-neutral-500">仅用于演示，不会产生真实扣款。</p>
+      <div className="flex items-center gap-3">{order.status === 'paid' ? <CheckCircle2 size={32} className="text-leaf" /> : <Wallet size={32} className="text-clay" />}<div><h2 className="text-xl font-semibold">{order.status === 'paid' ? '付款成功' : order.status === 'pending' ? '订单已提交，待付款' : '订单已取消'}</h2><p className="mt-1 text-sm text-neutral-500">{store.name}</p></div></div>
     </section>
     <section className="px-5 py-5"><h2 className="text-sm font-semibold">订单明细</h2>
       {order.itemDetails ? <OrderLines items={order.itemDetails} /> : <p className="py-4 text-sm text-neutral-500">此历史订单未保存菜品快照，共 {order.items.reduce((sum, item) => sum + item.quantity, 0)} 份。</p>}
       <div className="mt-4 flex justify-between gap-3 text-sm"><span>订单金额</span><strong className="text-lg">{money(order.total)}</strong></div>
-      <dl className="mt-6 space-y-3 border-t pt-5 text-xs text-neutral-500"><div><dt>订单编号</dt><dd className="mt-1 break-all leading-5 text-ink">{order.id}</dd></div><div><dt>下单时间</dt><dd className="mt-1 text-ink">{dateTime(order.createdAt)}</dd></div><div className="flex justify-between"><dt>付款方式</dt><dd className="text-ink">本地模拟付款</dd></div></dl>
+      <dl className="mt-6 space-y-3 border-t pt-5 text-xs text-neutral-500"><div><dt>订单编号</dt><dd className="mt-1 break-all leading-5 text-ink">{order.id}</dd></div><div><dt>下单时间</dt><dd className="mt-1 text-ink">{dateTime(order.createdAt)}</dd></div><div className="flex justify-between"><dt>付款状态</dt><dd className="text-ink">{order.status === 'paid' ? '已付款' : order.status === 'pending' ? '待付款' : '已取消'}</dd></div></dl>
       {error && <p role="alert" className="mt-4 text-sm text-red-700">{error}</p>}
     </section>
     <footer className="fixed inset-x-0 bottom-0 mx-auto w-full max-w-[480px] border-t bg-white px-5 pt-3 pb-[max(16px,env(safe-area-inset-bottom))]">
-      {order.status === 'pending' ? <button type="button" onClick={pay} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-lg bg-citrus text-sm font-semibold"><CreditCard size={18} />模拟付款 {money(order.total)}</button> : <Link to={`/m/${storeId}`} className="flex min-h-12 items-center justify-center rounded-lg bg-leaf text-sm font-medium text-white">继续点餐</Link>}
+      {order.status === 'pending' ? <button type="button" onClick={pay} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-lg bg-citrus text-sm font-semibold"><CreditCard size={18} />确认付款 {money(order.total)}</button> : <Link to={`/m/${storeId}`} className="flex min-h-12 items-center justify-center rounded-lg bg-leaf text-sm font-medium text-white">继续点餐</Link>}
     </footer>
   </PageFrame>;
 
@@ -133,7 +132,6 @@ export function CheckoutPage() {
         {!valid && <p role="alert" className="mt-4 text-sm leading-6 text-red-700">部分菜品或规格已变更，请返回菜单重新选择。</p>}
         <div className="mt-5 flex justify-between text-sm"><span className="text-neutral-500">共 {cart.reduce((sum, item) => sum + item.quantity, 0)} 份</span><strong>{money(totalInCents / 100)}</strong></div>
       </section>
-      <section className="border-t px-5 py-5"><h2 className="flex items-center gap-2 text-sm font-semibold"><CreditCard size={18} />本地模拟付款</h2><p className="mt-2 text-xs leading-6 text-neutral-500">提交后生成待付款订单，模拟付款不会产生真实扣款。</p></section>
       {error && <p role="alert" className="px-5 text-sm leading-6 text-red-700">{error}</p>}
       <footer className="fixed inset-x-0 bottom-0 mx-auto flex w-full max-w-[480px] items-center gap-3 border-t bg-white px-5 pt-3 pb-[max(16px,env(safe-area-inset-bottom))]"><div className="min-w-0 flex-1"><span className="text-xs text-neutral-500">合计</span><strong className="block text-xl">{money(totalInCents / 100)}</strong></div><button type="button" disabled={!valid} onClick={submit} className="min-h-12 rounded-lg bg-citrus px-5 text-sm font-semibold disabled:opacity-40">提交订单</button></footer>
     </>}
