@@ -1,8 +1,11 @@
 import { DATA_VERSION, createSeedState } from '../data/seed'
+import { createId } from '../utils/id'
+import { createTableToken } from '../utils/table-token'
 
 const keys = {
   version: 'ordio:mvp:version',
   stores: 'ordio:mvp:stores',
+  tables: 'ordio:mvp:tables',
   draftMenus: 'ordio:mvp:draft-menus',
   publishedMenus: 'ordio:mvp:published-menus',
   draftStorefronts: 'ordio:mvp:draft-storefronts',
@@ -27,6 +30,7 @@ function write(key, value) {
 function writeState(state) {
   write(keys.version, state.version)
   write(keys.stores, state.stores)
+  write(keys.tables, state.tables)
   write(keys.draftMenus, state.draftMenus)
   write(keys.publishedMenus, state.publishedMenus)
   write(keys.draftStorefronts, state.draftStorefronts)
@@ -38,17 +42,27 @@ function writeState(state) {
 async function initialize() {
   const version = read(keys.version, 0)
   if (version === DATA_VERSION) {
+    const seed = createSeedState()
     if (!read(keys.draftStorefronts, null) || !read(keys.publishedStorefronts, null)) {
-      const seed = createSeedState()
       write(keys.draftStorefronts, seed.draftStorefronts)
       write(keys.publishedStorefronts, seed.publishedStorefronts)
     }
+    if (!read(keys.tables, null)) {
+      write(keys.tables, seed.tables)
+    }
+    return
+  }
+  if (version === 2) {
+    const seed = createSeedState()
+    write(keys.tables, seed.tables)
+    write(keys.version, DATA_VERSION)
     return
   }
   if (version === 1) {
     const seed = createSeedState()
     write(keys.draftStorefronts, seed.draftStorefronts)
     write(keys.publishedStorefronts, seed.publishedStorefronts)
+    write(keys.tables, seed.tables)
     write(keys.version, DATA_VERSION)
     return
   }
@@ -86,6 +100,89 @@ async function saveStore(store) {
   }
   write(keys.stores, stores)
   return clone(saved)
+}
+
+async function listTables(storeId) {
+  await initialize()
+  return read(keys.tables, [])
+    .filter((table) => table.storeId === storeId)
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map(clone)
+}
+
+async function resolveTableToken(tableToken) {
+  await initialize()
+  const table = read(keys.tables, []).find((item) => item.token === tableToken)
+  if (!table) {
+    return null
+  }
+  const store = await getStore(table.storeId)
+  return store ? { table: clone(table), store } : null
+}
+
+async function createTable(storeId, input) {
+  await initialize()
+  const name = String(input?.name || '').trim()
+  const area = String(input?.area || '').trim()
+  if (!name) {
+    throw new Error('桌台名称不能为空')
+  }
+  if (!(await getStore(storeId))) {
+    throw new Error('店铺不存在')
+  }
+
+  const tables = read(keys.tables, [])
+  if (tables.some((table) => table.storeId === storeId && table.name === name)) {
+    throw new Error('桌台名称已存在')
+  }
+  const now = new Date().toISOString()
+  const table = {
+    id: createId('table'),
+    storeId,
+    name,
+    area,
+    token: await createTableToken(),
+    enabled: true,
+    qrFileId: '',
+    createdAt: now,
+    updatedAt: now,
+  }
+  tables.push(table)
+  write(keys.tables, tables)
+  return clone(table)
+}
+
+async function rotateTableToken(tableId) {
+  await initialize()
+  const tables = read(keys.tables, [])
+  const index = tables.findIndex((table) => table.id === tableId)
+  if (index < 0) {
+    throw new Error('桌台不存在')
+  }
+  tables[index] = {
+    ...tables[index],
+    token: await createTableToken(),
+    qrFileId: '',
+    updatedAt: new Date().toISOString(),
+  }
+  write(keys.tables, tables)
+  return clone(tables[index])
+}
+
+async function setTableEnabled(tableId, enabled) {
+  await initialize()
+  const tables = read(keys.tables, [])
+  const index = tables.findIndex((table) => table.id === tableId)
+  if (index < 0) {
+    throw new Error('桌台不存在')
+  }
+  tables[index] = {
+    ...tables[index],
+    enabled: Boolean(enabled),
+    updatedAt: new Date().toISOString(),
+  }
+  write(keys.tables, tables)
+  return clone(tables[index])
 }
 
 async function getDraftMenu(storeId) {
@@ -329,6 +426,11 @@ export const localRepository = {
   initialize,
   getStore,
   saveStore,
+  listTables,
+  resolveTableToken,
+  createTable,
+  rotateTableToken,
+  setTableEnabled,
   getDraftMenu,
   saveDraftMenu,
   publishMenu,

@@ -21,7 +21,7 @@
     <view class="store-strip">
       <view>
         <text class="store-name">{{ store.name }}</text>
-        <text class="store-hours">{{ store.businessHours || '营业时间以门店为准' }}</text>
+        <text class="store-hours">{{ tableLabel }}</text>
       </view>
       <button class="orders-button" size="mini" @tap="goOrders">我的订单</button>
     </view>
@@ -83,7 +83,7 @@
 
   <view v-else-if="loading" class="empty-state">正在读取门店主页…</view>
   <view v-else class="empty-state">
-    <text>门店主页暂未发布</text>
+    <text>{{ loadError || '门店主页暂未发布' }}</text>
   </view>
 </template>
 
@@ -91,23 +91,33 @@
 import { computed, ref } from 'vue'
 import { onLoad, onPullDownRefresh, onShow } from '@dcloudio/uni-app'
 
-import { getPublishedMenu, getPublishedStorefront, getStore } from '../../services/repository'
+import { getPublishedMenu, getPublishedStorefront, getStore, resolveTableToken } from '../../services/repository'
 import { formatMoney } from '../../utils/money'
 
 const storeId = ref('')
+const tableToken = ref('')
 const store = ref(null)
+const table = ref(null)
 const storefront = ref(null)
 const menu = ref(null)
 const loading = ref(true)
+const loadError = ref('')
 
 const visibleBlocks = computed(() => storefront.value?.blocks.filter((block) => block.visible) || [])
 const featuredDishes = computed(() => {
   const ids = new Set(storefront.value?.featuredDishIds || [])
   return menu.value?.dishes.filter((dish) => ids.has(dish.id)) || []
 })
+const tableLabel = computed(() => {
+  if (!table.value) {
+    return store.value?.businessHours || '营业时间以门店为准'
+  }
+  return `${table.value.area ? `${table.value.area} · ` : ''}${table.value.name}桌`
+})
 
 onLoad((options) => {
   storeId.value = options.storeId || ''
+  tableToken.value = options.tableToken || ''
 })
 
 onShow(loadPage)
@@ -123,6 +133,20 @@ async function loadPage() {
     return
   }
   loading.value = true
+  loadError.value = ''
+  if (tableToken.value) {
+    const result = await resolveTableToken(tableToken.value)
+    if (!result || !result.table.enabled || result.store.id !== storeId.value) {
+      store.value = null
+      storefront.value = null
+      loadError.value = '桌码无效或已经更新，请重新扫码'
+      loading.value = false
+      return
+    }
+    table.value = result.table
+  } else {
+    table.value = null
+  }
   const [storeResult, storefrontResult, menuResult] = await Promise.all([
     getStore(storeId.value),
     getPublishedStorefront(storeId.value),
@@ -135,8 +159,11 @@ async function loadPage() {
 }
 
 function goMenu() {
+  const tableQuery = tableToken.value
+    ? `&tableToken=${encodeURIComponent(tableToken.value)}`
+    : ''
   uni.navigateTo({
-    url: `/pages/customer/menu?storeId=${encodeURIComponent(storeId.value)}`,
+    url: `/pages/customer/menu?storeId=${encodeURIComponent(storeId.value)}${tableQuery}`,
   })
 }
 

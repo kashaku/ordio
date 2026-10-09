@@ -1,7 +1,7 @@
 {
   "name": "Ordio",
   "appid": "",
-  "description": "本地扫码点餐演示小程序",
+  "description": "支持商家个性化主页与桌码点餐的小程序",
   "versionName": "0.1.0",
   "versionCode": "100",
   "transformPx": false,

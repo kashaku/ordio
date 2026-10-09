@@ -209,6 +209,44 @@
         <button class="secondary-button" :loading="savingDraft" @tap="saveDraftOnly">保存草稿</button>
         <button class="primary-button" :loading="publishing" @tap="publish">发布菜单</button>
       </view>
+
+      <view class="section card">
+        <view class="section-heading">
+          <view>
+            <text class="section-index">05</text>
+            <text class="section-title">桌台与桌码</text>
+          </view>
+          <text class="section-count">{{ tables.length }} 个</text>
+        </view>
+
+        <text class="builder-help">
+          桌台令牌已可用于扫码入口联调。正式小程序码图片需要由云函数生成，不能在小程序端保存 AppSecret 后直接调用。
+        </text>
+
+        <view v-for="table in tables" :key="table.id" class="table-row">
+          <view class="table-row-heading">
+            <view>
+              <text class="table-name">{{ table.name }}</text>
+              <text class="table-area">{{ table.area || '未设置区域' }}</text>
+            </view>
+            <view class="table-switch">
+              <text>{{ table.enabled ? '启用' : '停用' }}</text>
+              <switch color="#F5B000" :checked="table.enabled" @change="toggleTable(table, $event)" />
+            </view>
+          </view>
+          <text class="table-scene">scene={{ tableScene(table) }}</text>
+          <view class="table-actions">
+            <button size="mini" @tap="copyTableScene(table)">复制联调参数</button>
+            <button size="mini" @tap="confirmRotateTable(table)">更新令牌</button>
+          </view>
+        </view>
+
+        <view class="table-create">
+          <input v-model="newTable.name" class="inline-input" maxlength="20" placeholder="桌台名称，如 A03" />
+          <input v-model="newTable.area" class="inline-input" maxlength="20" placeholder="区域，如 大厅" />
+          <button class="small-primary" size="mini" :loading="creatingTable" @tap="addTable">新增桌台</button>
+        </view>
+      </view>
     </template>
 
     <view v-if="dishForm" class="editor-overlay" @tap="closeDishEditor">
@@ -278,21 +316,26 @@ import { computed, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 
 import {
+  createTable,
   getDraftStorefront,
   getDraftMenu,
   getPublishedMenu,
   getPublishedStorefront,
   getStore,
+  listTables,
   publishMenu,
   publishStorefront,
   saveDraftMenu,
   saveDraftStorefront,
   saveStore,
+  rotateTableToken,
+  setTableEnabled,
 } from '../../services/repository'
 import { storefrontAccentColors, storefrontTemplates } from '../../data/storefront-templates'
 import { createId } from '../../utils/id'
 import { choosePersistentImage } from '../../utils/media'
 import { centsToYuanInput, formatMoney, parseYuanToCents } from '../../utils/money'
+import { buildTableScene } from '../../utils/scan'
 
 const STORE_ID = 'store-demo'
 const loading = ref(true)
@@ -301,6 +344,7 @@ const savingDraft = ref(false)
 const publishing = ref(false)
 const savingHome = ref(false)
 const publishingHome = ref(false)
+const creatingTable = ref(false)
 const storeDirty = ref(false)
 const menuDirty = ref(false)
 const homeDirty = ref(false)
@@ -315,6 +359,8 @@ const draft = ref({ categories: [], dishes: [] })
 const published = ref(null)
 const homeDraft = ref(null)
 const publishedHome = ref(null)
+const tables = ref([])
+const newTable = ref({ name: '', area: '' })
 const newCategoryName = ref('')
 const dishForm = ref(null)
 const editingDishId = ref('')
@@ -360,18 +406,20 @@ onShow(loadPage)
 
 async function loadPage() {
   loading.value = true
-  const [store, draftMenu, publishedMenu, draftStorefront, publishedStorefront] = await Promise.all([
+  const [store, draftMenu, publishedMenu, draftStorefront, publishedStorefront, storeTables] = await Promise.all([
     getStore(STORE_ID),
     getDraftMenu(STORE_ID),
     getPublishedMenu(STORE_ID),
     getDraftStorefront(STORE_ID),
     getPublishedStorefront(STORE_ID),
+    listTables(STORE_ID),
   ])
   storeForm.value = store
   draft.value = draftMenu
   published.value = publishedMenu
   homeDraft.value = draftStorefront
   publishedHome.value = publishedStorefront
+  tables.value = storeTables
   storeDirty.value = false
   menuDirty.value = false
   homeDirty.value = false
@@ -392,6 +440,60 @@ function markMenuDirty() {
 
 function markHomeDirty() {
   homeDirty.value = true
+}
+
+function tableScene(table) {
+  return buildTableScene(table.token)
+}
+
+function copyTableScene(table) {
+  uni.setClipboardData({
+    data: tableScene(table),
+  })
+}
+
+async function addTable() {
+  creatingTable.value = true
+  try {
+    const table = await createTable(STORE_ID, newTable.value)
+    tables.value = [...tables.value, table].sort((a, b) => a.name.localeCompare(b.name))
+    newTable.value = { name: '', area: '' }
+    uni.showToast({ title: '桌台已创建', icon: 'success' })
+  } catch (error) {
+    uni.showToast({ title: error.message || '创建失败', icon: 'none' })
+  } finally {
+    creatingTable.value = false
+  }
+}
+
+function confirmRotateTable(table) {
+  uni.showModal({
+    title: '更新桌台令牌',
+    content: `更新后，${table.name} 的旧桌码会立即失效。`,
+    confirmColor: '#B85C38',
+    success: async (result) => {
+      if (!result.confirm) {
+        return
+      }
+      try {
+        const updated = await rotateTableToken(table.id)
+        tables.value = tables.value.map((item) => item.id === updated.id ? updated : item)
+        uni.showToast({ title: '令牌已更新', icon: 'success' })
+      } catch (error) {
+        uni.showToast({ title: error.message || '更新失败', icon: 'none' })
+      }
+    },
+  })
+}
+
+async function toggleTable(table, event) {
+  try {
+    const updated = await setTableEnabled(table.id, event.detail.value)
+    tables.value = tables.value.map((item) => item.id === updated.id ? updated : item)
+  } catch (error) {
+    uni.showToast({ title: error.message || '状态更新失败', icon: 'none' })
+    tables.value = [...tables.value]
+  }
 }
 
 function chooseTemplate(template) {
@@ -994,6 +1096,84 @@ function previewStorefront() {
 
 .homepage-actions button {
   padding: 22rpx 12rpx;
+}
+
+.table-row {
+  margin-top: 18rpx;
+  padding: 22rpx;
+  border: 1rpx solid #e1d7c8;
+  border-radius: 14rpx;
+  background: #fbf8f2;
+}
+
+.table-row-heading,
+.table-switch,
+.table-actions,
+.table-create {
+  display: flex;
+  align-items: center;
+}
+
+.table-row-heading {
+  justify-content: space-between;
+}
+
+.table-name,
+.table-area {
+  display: block;
+}
+
+.table-name {
+  font-size: 30rpx;
+  font-weight: 800;
+}
+
+.table-area {
+  margin-top: 5rpx;
+  color: #7a7268;
+  font-size: 21rpx;
+}
+
+.table-switch {
+  gap: 6rpx;
+  color: #625d55;
+  font-size: 22rpx;
+}
+
+.table-switch switch {
+  transform: scale(0.72);
+}
+
+.table-scene {
+  display: block;
+  margin-top: 18rpx;
+  padding: 14rpx;
+  border-radius: 9rpx;
+  background: #eee8de;
+  color: #625d55;
+  font-family: monospace;
+  font-size: 20rpx;
+  word-break: break-all;
+}
+
+.table-actions {
+  margin-top: 14rpx;
+  gap: 10rpx;
+}
+
+.table-actions button {
+  padding: 13rpx 16rpx;
+  background: #eee8de;
+}
+
+.table-create {
+  margin-top: 22rpx;
+  flex-wrap: wrap;
+  gap: 12rpx;
+}
+
+.table-create .inline-input {
+  min-width: 220rpx;
 }
 
 .cover-row,

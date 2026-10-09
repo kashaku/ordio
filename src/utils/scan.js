@@ -6,21 +6,55 @@ function decode(value) {
   }
 }
 
-export function parseStoreId(scanValue) {
+function readParam(value, names) {
+  const pattern = new RegExp(`(?:^|[?&#])(?:${names.join('|')})=([^&#]+)`, 'i')
+  const match = value.match(pattern)
+  return match ? decode(match[1]).trim() : ''
+}
+
+export function parseEntryPayload(scanValue) {
   const value = decode(String(scanValue || '').trim())
   if (!value) {
-    return ''
+    return null
   }
 
-  const match = value.match(/(?:^|[?&#])storeId=([^&#]+)/i)
-  if (match) {
-    return decode(match[1]).trim()
+  const scene = readParam(value, ['scene'])
+  if (scene && scene !== value) {
+    return parseEntryPayload(scene)
   }
 
-  const sceneMatch = value.match(/(?:^|[?&#])scene=([^&#]+)/i)
-  if (sceneMatch) {
-    return parseStoreId(sceneMatch[1])
+  const tableToken = readParam(value, ['tableToken', 't'])
+  if (/^tbl_[a-zA-Z0-9_-]{16,64}$/.test(tableToken)) {
+    return { type: 'table', tableToken }
+  }
+  if (/^tbl_[a-zA-Z0-9_-]{16,64}$/.test(value)) {
+    return { type: 'table', tableToken: value }
   }
 
-  return /^[a-zA-Z0-9_-]+$/.test(value) ? value : ''
+  const storeId = readParam(value, ['storeId'])
+  if (storeId) {
+    return { type: 'store', storeId, legacy: true }
+  }
+  if (/^[a-zA-Z0-9_-]+$/.test(value)) {
+    return { type: 'store', storeId: value, legacy: true }
+  }
+
+  return null
+}
+
+export function entryPayloadFromOptions(options = {}) {
+  if (options.scene) {
+    return options.scene
+  }
+  if (options.tableToken) {
+    return `tableToken=${options.tableToken}`
+  }
+  if (options.storeId) {
+    return `storeId=${options.storeId}`
+  }
+  return ''
+}
+
+export function buildTableScene(tableToken) {
+  return `t=${tableToken}`
 }

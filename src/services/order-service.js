@@ -1,5 +1,5 @@
 import { createId, normalizeSelectedSpecs } from '../utils/id'
-import { getPublishedMenu, saveOrder } from './repository'
+import { getPublishedMenu, resolveTableToken, saveOrder } from './repository'
 
 export function priceCartItem(cartItem, menu) {
   const dish = menu?.dishes?.find((item) => item.id === cartItem.dishId)
@@ -92,7 +92,7 @@ export async function resolveCart(storeId, cartItems) {
   }
 }
 
-export async function createOrder(storeId, cartItems) {
+export async function createOrder(storeId, cartItems, entry = {}) {
   const result = await resolveCart(storeId, cartItems)
   if (result.invalidItems.length) {
     const error = new Error('购物车中有已失效的菜品或规格')
@@ -104,10 +104,26 @@ export async function createOrder(storeId, cartItems) {
     throw new Error('购物车为空')
   }
 
+  if (!entry.tableToken) {
+    const error = new Error('请先扫描桌码确认桌台')
+    error.code = 'TABLE_REQUIRED'
+    throw error
+  }
+
+  const resolvedTable = await resolveTableToken(entry.tableToken)
+  if (!resolvedTable || !resolvedTable.table.enabled || resolvedTable.store.id !== storeId) {
+    const error = new Error('桌码已失效，请重新扫码')
+    error.code = 'TABLE_INVALID'
+    throw error
+  }
+  const table = resolvedTable.table
+
   const createdAt = new Date().toISOString()
   const order = {
     id: createId('order'),
     storeId,
+    tableId: table.id,
+    tableName: table.name,
     items: result.items,
     totalInCents: result.totalInCents,
     status: 'pending',

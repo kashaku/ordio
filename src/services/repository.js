@@ -4,6 +4,11 @@ export const repositoryMethods = Object.freeze([
   'initialize',
   'getStore',
   'saveStore',
+  'listTables',
+  'resolveTableToken',
+  'createTable',
+  'rotateTableToken',
+  'setTableEnabled',
   'getDraftMenu',
   'saveDraftMenu',
   'publishMenu',
@@ -34,6 +39,11 @@ export function useRepository(repository) {
 export const initializeRepository = (...args) => activeRepository.initialize(...args)
 export const getStore = (...args) => activeRepository.getStore(...args)
 export const saveStore = (...args) => activeRepository.saveStore(...args)
+export const listTables = (...args) => activeRepository.listTables(...args)
+export const resolveTableToken = (...args) => activeRepository.resolveTableToken(...args)
+export const createTable = (...args) => activeRepository.createTable(...args)
+export const rotateTableToken = (...args) => activeRepository.rotateTableToken(...args)
+export const setTableEnabled = (...args) => activeRepository.setTableEnabled(...args)
 export const getDraftMenu = (...args) => activeRepository.getDraftMenu(...args)
 export const saveDraftMenu = (...args) => activeRepository.saveDraftMenu(...args)
 export const publishMenu = (...args) => activeRepository.publishMenu(...args)

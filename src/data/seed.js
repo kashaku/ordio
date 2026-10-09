@@ -1,6 +1,6 @@
 import { createDefaultStorefront } from './storefront-templates'
 
-export const DATA_VERSION = 2
+export const DATA_VERSION = 3
 
 export function createSeedState() {
   const now = new Date().toISOString()
@@ -11,6 +11,30 @@ export function createSeedState() {
     address: '上海市静安区愚园路 88 号',
     businessHours: '10:30-21:30',
   }
+  const tables = [
+    {
+      id: 'table-demo-a01',
+      storeId: store.id,
+      name: 'A01',
+      area: '大厅',
+      token: 'tbl_7eJr2pkN4xQm9VaL6sTyBwUc',
+      enabled: true,
+      qrFileId: '',
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      id: 'table-demo-a02',
+      storeId: store.id,
+      name: 'A02',
+      area: '大厅',
+      token: 'tbl_K3mV8qZd5nPx2WsR7cLf9HaB',
+      enabled: true,
+      qrFileId: '',
+      createdAt: now,
+      updatedAt: now,
+    },
+  ]
 
   const categories = [
     { id: 'category-signature', name: '招牌推荐', sortOrder: 1 },
@@ -105,6 +129,7 @@ export function createSeedState() {
   return {
     version: DATA_VERSION,
     stores: [store],
+    tables,
     draftMenus: { [store.id]: draftMenu },
     publishedMenus: { [store.id]: publishedMenu },
     draftStorefronts: { [store.id]: draftStorefront },

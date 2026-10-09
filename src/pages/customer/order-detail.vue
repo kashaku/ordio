@@ -14,6 +14,10 @@
           <text class="muted">创建时间</text>
           <text>{{ formatDate(order.createdAt) }}</text>
         </view>
+        <view v-if="order.tableName" class="detail-line">
+          <text class="muted">桌台</text>
+          <text>{{ order.tableName }}桌</text>
+        </view>
         <view v-if="order.paidAt" class="detail-line">
           <text class="muted">付款时间</text>
           <text>{{ formatDate(order.paidAt) }}</text>

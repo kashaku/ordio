@@ -7,7 +7,7 @@
       </view>
       <view class="store-copy">
         <text class="store-name">{{ store.name }}</text>
-        <text class="store-meta">{{ store.businessHours || '营业时间未设置' }}</text>
+        <text class="store-meta">{{ tableLabel }}</text>
         <text class="store-meta">{{ store.address || '地址未设置' }}</text>
       </view>
       <button class="orders-button" size="mini" @tap="goOrders">订单</button>
@@ -67,12 +67,14 @@ import CartPanel from '../../components/cart-panel/cart-panel.vue'
 import DishCard from '../../components/dish-card/dish-card.vue'
 import SpecPopup from '../../components/spec-popup/spec-popup.vue'
 import { priceCartItem, resolveCart } from '../../services/order-service'
-import { getPublishedMenu, getStore } from '../../services/repository'
+import { getPublishedMenu, getStore, resolveTableToken } from '../../services/repository'
 import { useCartStore } from '../../stores/cart'
 
 const cartStore = useCartStore()
 const storeId = ref('')
+const tableToken = ref('')
 const store = ref(null)
+const table = ref(null)
 const menu = ref(null)
 const activeCategoryId = ref('')
 const selectedDish = ref(null)
@@ -106,9 +108,16 @@ const displayCartItems = computed(() => {
 const cartTotal = computed(() =>
   menu.value ? cartStore.totalInCents(menu.value) : 0,
 )
+const tableLabel = computed(() => {
+  if (!table.value) {
+    return store.value?.businessHours || '营业时间未设置'
+  }
+  return `${table.value.area ? `${table.value.area} · ` : ''}${table.value.name}桌`
+})
 
 onLoad((options) => {
   storeId.value = options.storeId || ''
+  tableToken.value = options.tableToken || ''
 })
 
 onShow(loadPage)
@@ -125,6 +134,19 @@ async function loadPage() {
   }
 
   loading.value = true
+  if (tableToken.value) {
+    const result = await resolveTableToken(tableToken.value)
+    if (!result || !result.table.enabled || result.store.id !== storeId.value) {
+      store.value = null
+      menu.value = null
+      loading.value = false
+      uni.showToast({ title: '桌码已失效，请重新扫码', icon: 'none' })
+      return
+    }
+    table.value = result.table
+  } else {
+    table.value = null
+  }
   const [storeResult, menuResult] = await Promise.all([
     getStore(storeId.value),
     getPublishedMenu(storeId.value),
@@ -170,8 +192,11 @@ async function changeQuantity(key, quantity) {
 }
 
 function goCheckout() {
+  const tableQuery = tableToken.value
+    ? `&tableToken=${encodeURIComponent(tableToken.value)}`
+    : ''
   uni.navigateTo({
-    url: `/pages/customer/checkout?storeId=${encodeURIComponent(storeId.value)}`,
+    url: `/pages/customer/checkout?storeId=${encodeURIComponent(storeId.value)}${tableQuery}`,
   })
 }
 
