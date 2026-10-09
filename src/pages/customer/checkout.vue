@@ -8,6 +8,11 @@
     </view>
 
     <view v-if="loading" class="empty-state">正在核对购物车…</view>
+    <view v-else-if="loadError" class="card checkout-error">
+      <text class="notice-title">暂时无法结算</text>
+      <text class="notice-copy">{{ loadError }}</text>
+      <button class="secondary-button" @tap="backToMenu">返回菜单</button>
+    </view>
     <view v-else-if="!resolvedItems.length" class="card empty-card">
       <text>购物车为空</text>
       <button class="primary-button" @tap="backToMenu">返回菜单</button>
@@ -70,6 +75,7 @@ const table = ref(null)
 const cartResult = ref(null)
 const loading = ref(true)
 const submitting = ref(false)
+const loadError = ref('')
 
 const resolvedItems = computed(() => cartResult.value?.items || [])
 const totalInCents = computed(() => cartResult.value?.totalInCents || 0)
@@ -87,6 +93,7 @@ async function loadCheckout() {
     return
   }
   loading.value = true
+  loadError.value = ''
   try {
     if (tableToken.value) {
       const result = await resolveTableToken(tableToken.value)
@@ -110,7 +117,9 @@ async function loadCheckout() {
     }
     cartResult.value = result
   } catch (error) {
+    table.value = null
     cartResult.value = null
+    loadError.value = error.message || '购物车核对失败'
     uni.showToast({ title: error.message || '购物车核对失败', icon: 'none' })
   } finally {
     loading.value = false
@@ -278,6 +287,17 @@ function backToMenu() {
 .empty-card {
   padding: 70rpx 30rpx;
   text-align: center;
+}
+
+.checkout-error {
+  padding: 32rpx;
+  border-color: #e6c7bc;
+  background: #fff8f5;
+}
+
+.checkout-error button {
+  margin-top: 24rpx;
+  padding: 20rpx;
 }
 
 .empty-card button {

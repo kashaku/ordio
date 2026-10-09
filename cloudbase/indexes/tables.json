@@ -1,0 +1,25 @@
+{
+  "CreateIndexes": [
+    {
+      "IndexName": "table_token_unique",
+      "MgoKeySchema": {
+        "MgoIndexKeys": [
+          { "Name": "table_token", "Direction": "1" }
+        ],
+        "MgoIsUnique": true,
+        "MgoIsSparse": false
+      }
+    },
+    {
+      "IndexName": "store_enabled",
+      "MgoKeySchema": {
+        "MgoIndexKeys": [
+          { "Name": "store_id", "Direction": "1" },
+          { "Name": "enabled", "Direction": "1" }
+        ],
+        "MgoIsUnique": false,
+        "MgoIsSparse": false
+      }
+    }
+  ]
+}

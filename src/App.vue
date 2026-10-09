@@ -1,10 +1,14 @@
 <script>
+import { initializeCloudSession } from './services/session-service'
 import { initializeRepository } from './services/repository'
 
 export default {
   onLaunch() {
     initializeRepository().catch((error) => {
       console.error('初始化本地数据失败', error)
+    })
+    initializeCloudSession().catch((error) => {
+      console.error('初始化云端身份失败', error)
     })
   },
 }

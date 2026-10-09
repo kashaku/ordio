@@ -1,0 +1,14 @@
+{
+  "CreateIndexes": [
+    {
+      "IndexName": "openid_unique",
+      "MgoKeySchema": {
+        "MgoIndexKeys": [
+          { "Name": "openid", "Direction": "1" }
+        ],
+        "MgoIsUnique": true,
+        "MgoIsSparse": false
+      }
+    }
+  ]
+}

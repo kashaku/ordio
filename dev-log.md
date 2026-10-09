@@ -65,3 +65,28 @@
 
 - 当前主页搭建和发布仍在本机缓存中，尚未具备跨设备同步、权限校验、发布审计和版本回滚。
 - 商家工作台仍与顾客代码同包，只是顾客启动入口已移除；下一阶段迁移到响应式 Web 管理端。
+
+## 2026-10-09 CloudBase 身份骨架
+
+- 增加 `ordioApi` 云函数，首批提供 `session.get` 和 `entry.resolveTable`。
+- 小程序端增加显式 CloudBase 环境配置和会话初始化；未配置环境时保持本地模式。
+- 构建流程开始复制 `src/cloudfunctions`，并写入 `cloudfunctionRoot`。
+- 补充 `users`、`store_members`、`stores`、`tables` 的首批字段和索引要求。
+
+通过项目路径和 AppID 查询云环境均返回微信侧 `ret=1000 system error`，因此没有选择环境、部署函数或写入云数据。下一步先确认可用环境 ID，再创建集合、索引和试点门店数据。
+
+`wx-server-sdk@4.0.2` 是本次查询到的当前 npm 版本，但其传递依赖审计仍报告 6 个问题（1 moderate、5 high）。`npm audit fix --force` 会降级到 `2.5.3`，本次未执行破坏性降级；部署前需要结合微信运行时兼容性继续处理。
+
+## 2026-10-09 CloudBase 开发环境部署
+
+- 开发环境确定为 `cloud1-d4gl08nvu64e07107`，本机通过 `.env.local` 配置，未提交环境文件。
+- 创建 `users`、`store_members`、`stores`、`tables` 集合。
+- 创建用户 OpenID 唯一索引、门店成员联合唯一索引和查询索引、桌台令牌唯一索引及门店桌台查询索引。
+- `ordioApi` 已部署并进入 `Active`，运行时为 `Nodejs16.13`。
+- `npm run check:cloudfunctions` 和 `npm run build:mp-weixin` 均通过；构建仍有已知的 Node 循环依赖警告。
+
+### 下一步
+
+- 在微信模拟器中首次调用 `session.get`，确认 OpenID 身份和 `users` 写入。
+- 写入可重复使用的试点门店、成员和桌台种子数据。
+- 联调有效、停用和不存在桌码，再把顾客扫码入口从本地令牌解析迁移到云函数。

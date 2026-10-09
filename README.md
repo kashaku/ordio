@@ -45,4 +45,6 @@ npm run build:mp-weixin
 
 当前只完成桌码令牌和入口解析，还不能生成可打印的正式微信小程序码。不包含后端、跨设备同步、微信登录和真实支付。
 
+CloudBase 身份和桌码解析骨架已经加入代码，但默认未启用，也尚未部署。环境配置和首批集合见 [docs/cloudbase-development.md](docs/cloudbase-development.md)。
+
 当前实现和验收见 [docs/uniapp-mvp-development.md](docs/uniapp-mvp-development.md)。真实运营版的系统拆分、数据库、权限、支付、UI 和分期计划见 [docs/production-roadmap.md](docs/production-roadmap.md)。
