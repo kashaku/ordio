@@ -1,24 +1,15 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Clock, ImageIcon, MapPin, Minus, Plus, ShoppingBag, Star, Store as StoreIcon, Trash2, X } from 'lucide-react';
+import { Clock, MapPin, Minus, Plus, ShoppingBag, Star, Store as StoreIcon, Trash2, X } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
 
 import { readOrdioData } from '../storage/ordioStorage';
 import { dishPriceInCents, getPublishedMenu, resolveCart, useCartStore } from '../state/cartStore';
 import type { Dish, SelectedSpec } from '../types/domain';
+import { DishImage } from '../components/customer/DishImage';
+import { DishOptions } from '../components/customer/DishOptions';
 
 function money(cents: number): string {
   return `¥${(cents / 100).toFixed(2).replace(/\.00$/, '')}`;
-}
-
-function DishImage({ src, name }: { src: string; name: string }) {
-  const [failedSource, setFailedSource] = useState<string | null>(null);
-  return (
-    <div className="flex aspect-square w-full items-center justify-center overflow-hidden rounded-lg bg-neutral-100 text-neutral-400">
-      {src && failedSource !== src
-        ? <img src={src} alt={name} className="h-full w-full object-cover" onError={() => setFailedSource(src)} />
-        : <ImageIcon size={28} aria-label={`${name}暂无图片`} />}
-    </div>
-  );
 }
 
 function Sheet({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
@@ -49,22 +40,7 @@ function SpecPicker({ dish, onClose, onAdd }: { dish: Dish; onClose: () => void;
   return (
     <Sheet title={dish.name} onClose={onClose}>
       <p className="mb-4 text-sm leading-6 text-neutral-500">{dish.description}</p>
-      {dish.specs.map((group) => (
-        <fieldset key={group.id} className="mb-5">
-          <legend className="mb-2 text-sm font-medium">{group.name} {group.required ? '（必选）' : '（可选）'}</legend>
-          <div className="flex flex-wrap gap-2">
-            {!group.required && <label className="flex min-h-11 items-center gap-2 rounded-lg border px-3 text-sm">
-              <input type="radio" name={group.id} checked={!specs.some((spec) => spec.groupId === group.id)}
-                onChange={() => setSpecs(specs.filter((spec) => spec.groupId !== group.id))} />不选
-            </label>}
-            {group.options.map((option) => <label key={option.id} className="flex min-h-11 items-center gap-2 rounded-lg border px-3 text-sm has-[:checked]:border-leaf has-[:checked]:bg-green-50">
-              <input type="radio" name={group.id} checked={specs.some((spec) => spec.groupId === group.id && spec.optionId === option.id)}
-                onChange={() => setSpecs([...specs.filter((spec) => spec.groupId !== group.id), { groupId: group.id, optionId: option.id }])} />
-              {option.name}{option.priceDelta !== 0 && ` ${option.priceDelta > 0 ? '+' : ''}${money(Math.round(option.priceDelta * 100))}`}
-            </label>)}
-          </div>
-        </fieldset>
-      ))}
+      <DishOptions dish={dish} value={specs} onChange={setSpecs} />
       <div className="flex items-center justify-between gap-4 border-t pt-4">
         <strong className="text-xl text-clay">{money(dishPriceInCents(dish, specs))}</strong>
         <button type="button" disabled={!valid} onClick={() => { onAdd(specs); onClose(); }} className="flex min-h-11 items-center gap-2 rounded-lg bg-citrus px-4 font-medium disabled:opacity-40"><Plus size={18} />加入购物车</button>
@@ -135,8 +111,8 @@ export function CustomerPage() {
             {dishes.map((dish) => {
               const count = cart.filter((item) => item.dishId === dish.id).reduce((sum, item) => sum + item.quantity, 0);
               return <article key={dish.id} className="grid grid-cols-[76px_minmax(0,1fr)] gap-3 border-b border-neutral-100 py-4 first:pt-0">
-                <DishImage src={dish.image} name={dish.name} />
-                <div className="min-w-0"><h3 className="break-words text-sm font-semibold leading-5">{dish.name}</h3><p className="mt-1 line-clamp-2 text-xs leading-5 text-neutral-500">{dish.description}</p>
+                <Link to={`/m/${storeId}/dish/${dish.id}`} aria-label={`查看 ${dish.name} 详情`} className="self-start rounded-lg focus-visible:outline-leaf"><DishImage src={dish.image} name={dish.name} /></Link>
+                <div className="min-w-0"><h3 className="break-words text-sm font-semibold leading-5"><Link to={`/m/${storeId}/dish/${dish.id}`}>{dish.name}</Link></h3><p className="mt-1 line-clamp-2 text-xs leading-5 text-neutral-500">{dish.description}</p>
                   <p className="mt-1 text-[11px] text-neutral-400">月售 {dish.sales}</p>
                   <div className="mt-1 flex flex-wrap gap-1">{dish.tags.map((tag, index) => <span key={`${tag}-${index}`} className="rounded border border-green-100 px-1 text-[10px] text-leaf">{tag}</span>)}</div>
                   <div className="mt-2 flex flex-wrap items-center justify-between gap-1"><strong className="text-base text-clay">{money(Math.round(dish.price * 100))}</strong><div className="flex items-center gap-1">
