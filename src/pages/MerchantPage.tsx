@@ -26,15 +26,18 @@ import {
   Undo2,
   ZoomIn,
   ZoomOut,
+  X,
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import type { ChangeEvent, MouseEvent, ReactNode } from 'react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { initializeOrdioData, readOrdioData, writeOrdioData } from '../storage/ordioStorage';
-import type { Dish, EditorNode, Menu, MenuTemplate, OrdioData, Store as StoreModel, StoreExtraModule } from '../types';
+import { MenuLayoutNode, MenuLayoutProvider } from '../components/merchant/MenuLayout';
+import type { Dish, EditorNode, Menu, MenuTemplate, OrdioData, Store as StoreModel, StoreExtraModule, TemplateComponentNode } from '../types';
 
 type MerchantStep = 'store' | 'template' | 'editor' | 'publish';
+type InsertableNodeType = 'text' | 'image' | 'rect' | 'container' | TemplateComponentNode['type'];
 type NodePatch = Partial<{
   name: string;
   x: number;
@@ -60,6 +63,7 @@ type NodePatch = Partial<{
   borderColor: string;
   borderRadius: number;
   childNodeIds: string[];
+  binding: TemplateComponentNode['binding'];
 }>;
 
 const steps: Array<{ id: MerchantStep; title: string; description: string }> = [
@@ -225,7 +229,19 @@ function applyNodePatch(node: EditorNode, patch: NodePatch): EditorNode {
   return { ...node, ...patch } as EditorNode;
 }
 
-function createInsertedNode(type: 'text' | 'image' | 'rect' | 'container' | 'storeInfo', storeId: string): EditorNode {
+function createInsertedNode(type: InsertableNodeType, storeId: string, menu: Menu): EditorNode {
+  if (type === 'categorySidebar' || type === 'dishList' || type === 'dishCard' || type === 'cartBar') {
+    const size = type === 'categorySidebar' ? { x: 0, y: 132, width: 88, height: 612 }
+      : type === 'dishList' ? { x: 88, y: 132, width: 287, height: 612 }
+      : type === 'cartBar' ? { x: 12, y: 744, width: 351, height: 56 }
+      : { x: 88, y: 132, width: 287, height: 190 };
+    return { id: `node-${type}-${Date.now()}`, type, name: { categorySidebar: '分类导航', dishList: '菜品列表', dishCard: '菜品卡片', cartBar: '购物车栏' }[type],
+      ...size, rotation: 0, zIndex: 80, locked: false, visible: true,
+      binding: type === 'dishCard' ? { kind: 'dish', dishId: menu.dishes[0]?.id ?? '' }
+        : type === 'cartBar' ? { kind: 'cart' }
+        : { kind: 'category', categoryId: [...menu.categories].sort((a, b) => a.sortOrder - b.sortOrder)[0]?.id ?? '' },
+    };
+  }
   const base = {
     id: `node-${type}-${Date.now()}`,
     name:
@@ -364,14 +380,14 @@ export function MerchantPage() {
     );
   }
 
-  function insertNode(type: 'text' | 'image' | 'rect' | 'container' | 'storeInfo'): void {
+  function insertNode(type: InsertableNodeType): void {
     if (type === 'storeInfo' && menu.nodes.some((node) => node.type === 'storeInfo')) {
       setSelectedNodeId(menu.nodes.find((node) => node.type === 'storeInfo')?.id ?? null);
       setSavedMessage('店铺简略信息组件已存在');
       return;
     }
 
-    const nextNode = createInsertedNode(type, store.id);
+    const nextNode = createInsertedNode(type, store.id, menu);
     updateCurrentMenu(
       (currentMenu) => ({
         ...currentMenu,
@@ -456,6 +472,25 @@ export function MerchantPage() {
 
   function publishCurrentMenu(): void {
     updateCurrentMenu((currentMenu) => ({ ...currentMenu, status: 'published' }), '菜单已发布');
+  }
+
+  function saveCurrentMenu(): void {
+    try {
+      const latest = readOrdioData();
+      const nextData: OrdioData = {
+        ...data,
+        orders: latest.orders,
+        comments: latest.comments,
+        menus: data.menus.map((item) => item.id === menu.id
+          ? ensureStoreInfoNode({ ...menu, updatedAt: new Date().toISOString() }, store.id)
+          : item),
+      };
+      writeOrdioData(nextData);
+      setData(nextData);
+      setSavedMessage(`菜单保存成功 · ${new Date().toLocaleTimeString('zh-CN')}`);
+    } catch {
+      setSavedMessage('菜单保存失败，存储空间可能不足，请减少图片后重试。');
+    }
   }
 
   function updateStore(patch: Partial<StoreModel>, message = '店铺信息已保存'): void {
@@ -796,6 +831,7 @@ export function MerchantPage() {
 
           {activeStep === 'editor' ? (
             <MenuEditor
+              feedback={savedMessage}
               canRedo={redoStack.length > 0}
               canUndo={undoStack.length > 0}
               menu={menu}
@@ -807,7 +843,7 @@ export function MerchantPage() {
               onPaste={pasteNode}
               onPublish={publishCurrentMenu}
               onRedo={redoEditorChange}
-              onSave={() => replaceCurrentMenu(menu, '菜单编辑已保存', false)}
+              onSave={saveCurrentMenu}
               onSelectNode={setSelectedNodeId}
               onUndo={undoEditorChange}
               onUpdateCanvas={(patch) =>
@@ -1245,6 +1281,7 @@ function MenuManager({
 }
 
 interface MenuEditorProps {
+  feedback: string;
   canRedo: boolean;
   canUndo: boolean;
   menu: Menu;
@@ -1252,7 +1289,7 @@ interface MenuEditorProps {
   store: StoreModel;
   onCopy: () => void;
   onDelete: () => void;
-  onInsertNode: (type: 'text' | 'image' | 'rect' | 'container' | 'storeInfo') => void;
+  onInsertNode: (type: InsertableNodeType) => void;
   onPaste: () => void;
   onPublish: () => void;
   onRedo: () => void;
@@ -1264,6 +1301,7 @@ interface MenuEditorProps {
 }
 
 function MenuEditor({
+  feedback,
   canRedo,
   canUndo,
   menu,
@@ -1281,6 +1319,7 @@ function MenuEditor({
   selectedNodeId,
   store,
 }: MenuEditorProps) {
+  const [previewOpen, setPreviewOpen] = useState(false);
   const sortedNodes = [...menu.nodes].sort((left, right) => left.zIndex - right.zIndex);
   const selectedNode = menu.nodes.find((node) => node.id === selectedNodeId) ?? null;
 
@@ -1297,8 +1336,12 @@ function MenuEditor({
         onPublish={onPublish}
         onRedo={onRedo}
         onSave={onSave}
+        onPreview={() => setPreviewOpen(true)}
         onUndo={onUndo}
       />
+
+      <p role="status" aria-live="polite" className={`border-b px-4 py-2 text-sm ${feedback.includes('失败') ? 'bg-red-50 text-red-700' : 'bg-leaf/5 text-leaf'}`}>{feedback}</p>
+      {previewOpen && <MenuPreviewDialog menu={menu} store={store} onClose={() => setPreviewOpen(false)} />}
 
       <div className="grid min-h-[720px] grid-cols-[220px_minmax(420px,1fr)_260px]">
         <EditorLeftPanel
@@ -1326,7 +1369,33 @@ function MenuEditor({
   );
 }
 
+function MenuPreviewDialog({ menu, store, onClose }: { menu: Menu; store: StoreModel; onClose: () => void }) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    dialog?.showModal();
+    return () => dialog?.close();
+  }, []);
+  return <dialog ref={dialogRef} aria-labelledby="menu-preview-title" onCancel={onClose}
+    onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}
+    className="fixed inset-0 m-auto max-h-[calc(100dvh-32px)] w-[calc(100%-32px)] max-w-[640px] overflow-auto rounded-lg bg-white p-0 text-ink shadow-xl backdrop:bg-black/50">
+    <header className="sticky top-0 z-[1000] flex items-center justify-between border-b bg-white px-5 py-3">
+      <h2 id="menu-preview-title" className="text-lg font-semibold">菜单预览</h2>
+      <button type="button" onClick={onClose} aria-label="关闭预览" title="关闭预览" className="flex h-11 w-11 items-center justify-center rounded-md hover:bg-neutral-100"><X size={20} /></button>
+    </header>
+    <div className="overflow-auto bg-neutral-100 p-5">
+      <MenuLayoutProvider key={menu.id} menu={menu} interactive>
+      <div aria-label="菜单画布预览" className="relative mx-auto overflow-hidden shadow-sm" style={{ width: menu.canvasConfig.width, height: menu.canvasConfig.height, background: menu.canvasConfig.background }}>
+        {[...menu.nodes].filter((node) => node.visible).sort((left, right) => left.zIndex - right.zIndex).map((node) =>
+          <div key={node.id} className="absolute overflow-hidden" style={{ left: node.x, top: node.y, width: node.width, height: node.height, transform: `rotate(${node.rotation}deg)`, zIndex: node.zIndex }}><NodeContent node={node} store={store} /></div>)}
+      </div>
+      </MenuLayoutProvider>
+    </div>
+  </dialog>;
+}
+
 interface EditorToolbarProps {
+  onPreview: () => void;
   canRedo: boolean;
   canUndo: boolean;
   menu: Menu;
@@ -1341,6 +1410,7 @@ interface EditorToolbarProps {
 }
 
 function EditorToolbar({
+  onPreview,
   canRedo,
   canUndo,
   menu,
@@ -1367,7 +1437,7 @@ function EditorToolbar({
         <ToolbarButton disabled={!selectedNode} icon={<Copy className="h-4 w-4" />} label="复制" onClick={onCopy} />
         <ToolbarButton icon={<Copy className="h-4 w-4" />} label="粘贴" onClick={onPaste} />
         <ToolbarButton disabled={!selectedNode} icon={<Trash2 className="h-4 w-4" />} label="删除" onClick={onDelete} />
-        <ToolbarButton icon={<Eye className="h-4 w-4" />} label="预览" onClick={onSave} />
+        <ToolbarButton icon={<Eye className="h-4 w-4" />} label="预览" onClick={onPreview} />
         <ToolbarButton icon={<Save className="h-4 w-4" />} label="保存" onClick={onSave} />
         <button
           className="inline-flex items-center gap-2 rounded-md bg-citrus px-3 py-2 text-sm font-semibold text-ink hover:bg-citrus/90"
@@ -1409,13 +1479,13 @@ function ToolbarButton({
 interface EditorLeftPanelProps {
   nodes: EditorNode[];
   selectedNodeId: string | null;
-  onInsertNode: (type: 'text' | 'image' | 'rect' | 'container' | 'storeInfo') => void;
+  onInsertNode: (type: InsertableNodeType) => void;
   onSelectNode: (nodeId: string | null) => void;
 }
 
 function EditorLeftPanel({ nodes, onInsertNode, onSelectNode, selectedNodeId }: EditorLeftPanelProps) {
   const componentButtons: Array<{
-    type: 'text' | 'image' | 'rect' | 'container' | 'storeInfo';
+    type: InsertableNodeType;
     label: string;
     icon: ReactNode;
   }> = [
@@ -1424,6 +1494,10 @@ function EditorLeftPanel({ nodes, onInsertNode, onSelectNode, selectedNodeId }: 
     { type: 'rect', label: '矩形', icon: <MousePointer2 className="h-4 w-4" /> },
     { type: 'container', label: '容器', icon: <Grid3X3 className="h-4 w-4" /> },
     { type: 'storeInfo', label: '店铺信息', icon: <Store className="h-4 w-4" /> },
+    { type: 'categorySidebar', label: '分类导航', icon: <Layers className="h-4 w-4" /> },
+    { type: 'dishList', label: '菜品列表', icon: <Grid3X3 className="h-4 w-4" /> },
+    { type: 'dishCard', label: '菜品卡片', icon: <Package className="h-4 w-4" /> },
+    { type: 'cartBar', label: '购物车栏', icon: <Package className="h-4 w-4" /> },
   ];
 
   return (
@@ -1434,12 +1508,12 @@ function EditorLeftPanel({ nodes, onInsertNode, onSelectNode, selectedNodeId }: 
           {componentButtons.map((button) => (
             <button
               key={button.type}
-              className="inline-flex items-center gap-2 rounded-md border border-ink/10 bg-porcelain px-3 py-2 text-sm hover:border-ink"
+              className="inline-flex min-h-10 items-center gap-1 rounded-md border border-ink/10 bg-porcelain px-2 py-2 text-xs hover:border-ink"
               type="button"
               onClick={() => onInsertNode(button.type)}
             >
-              {button.icon}
-              {button.label}
+              <span className="shrink-0">{button.icon}</span>
+              <span className="whitespace-nowrap">{button.label}</span>
             </button>
           ))}
         </div>
@@ -1548,6 +1622,7 @@ function EditorCanvas({ menu, nodes, onSelectNode, onUpdateNode, selectedNodeId,
             backgroundSize: `${gridSize * zoom}px ${gridSize * zoom}px`,
           }}
         />
+        <MenuLayoutProvider key={menu.id} menu={menu}>
         <div className="origin-top-left" style={{ transform: `scale(${zoom})`, width: menu.canvasConfig.width }}>
           {nodes
             .filter((node) => node.visible)
@@ -1561,6 +1636,7 @@ function EditorCanvas({ menu, nodes, onSelectNode, onUpdateNode, selectedNodeId,
               />
             ))}
         </div>
+        </MenuLayoutProvider>
       </div>
     </div>
   );
@@ -1654,7 +1730,7 @@ function NodeContent({ node, store }: { node: EditorNode; store: StoreModel }) {
     );
   }
 
-  return <div className="h-full w-full bg-citrus/20" />;
+  return 'binding' in node ? <MenuLayoutNode node={node} /> : null;
 }
 
 interface EditorPropertiesPanelProps {
@@ -1775,6 +1851,13 @@ function EditorPropertiesPanel({ menu, onUpdateCanvas, onUpdateNode, selectedNod
                 />
               </>
             ) : null}
+            {'binding' in selectedNode && (selectedNode.type === 'categorySidebar' || selectedNode.type === 'dishList') && <SelectField
+              label="绑定分类" value={selectedNode.binding.kind === 'category' ? selectedNode.binding.categoryId : ''}
+              options={[{ label: '未绑定分类', value: '' }, ...menu.categories.map((category) => ({ label: category.name, value: category.id }))]}
+              onChange={(value) => onUpdateNode(selectedNode.id, { binding: { kind: 'category', categoryId: value } })} />}
+            {selectedNode.type === 'dishCard' && <SelectField label="绑定菜品" value={selectedNode.binding.kind === 'dish' ? selectedNode.binding.dishId : ''}
+              options={[{ label: '未绑定菜品', value: '' }, ...menu.dishes.map((dish) => ({ label: dish.name, value: dish.id }))]}
+              onChange={(value) => onUpdateNode(selectedNode.id, { binding: { kind: 'dish', dishId: value } })} />}
           </section>
         ) : (
           <div className="rounded-lg border border-dashed border-ink/20 p-4 text-sm leading-6 text-ink/55">
