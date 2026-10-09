@@ -1,7 +1,25 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-import type { CartItem, Dish, SelectedSpec } from '../types/domain';
+import type { CartItem, Dish, Menu, OrdioData, SelectedSpec } from '../types/domain';
+
+export function getPublishedMenu(data: OrdioData, storeId: string): Menu | undefined {
+  return data.menus.filter((menu) => menu.storeId === storeId && menu.status === 'published')
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
+}
+
+export function resolveCart(menu: Menu | undefined, items: CartItem[]) {
+  return items.flatMap((item) => {
+    const dish = menu?.dishes.find((candidate) => candidate.id === item.dishId);
+    if (!dish || !Number.isSafeInteger(item.quantity) || item.quantity <= 0
+      || new Set(item.specs.map((spec) => spec.groupId)).size !== item.specs.length
+      || item.specs.some((spec) => !dish.specs.some((group) => group.id === spec.groupId && group.options.some((option) => option.id === spec.optionId)))
+      || dish.specs.some((group) => group.required && !item.specs.some((spec) => spec.groupId === group.id))) return [];
+    const unitPrice = dishPriceInCents(dish, item.specs);
+    if (!Number.isSafeInteger(unitPrice) || unitPrice < 0) return [];
+    return [{ ...item, dish, key: cartItemKey(item.dishId, item.specs), unitPrice }];
+  });
+}
 
 export function cartItemKey(dishId: string, specs: SelectedSpec[]): string {
   return JSON.stringify([dishId, [...specs].sort((a, b) => a.groupId.localeCompare(b.groupId))]);

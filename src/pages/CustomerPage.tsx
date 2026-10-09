@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Clock, ImageIcon, MapPin, Minus, Plus, ShoppingBag, Star, Store as StoreIcon, Trash2, X } from 'lucide-react';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 
 import { readOrdioData } from '../storage/ordioStorage';
-import { cartItemKey, dishPriceInCents, useCartStore } from '../state/cartStore';
+import { dishPriceInCents, getPublishedMenu, resolveCart, useCartStore } from '../state/cartStore';
 import type { Dish, SelectedSpec } from '../types/domain';
 
 function money(cents: number): string {
@@ -97,18 +97,11 @@ export function CustomerPage() {
   }, []);
 
   const store = data.stores.find((item) => item.id === storeId);
-  const menu = data.menus.filter((item) => item.storeId === storeId && item.status === 'published')
-    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
+  const menu = getPublishedMenu(data, storeId);
   const categories = [...(menu?.categories ?? [])].sort((a, b) => a.sortOrder - b.sortOrder);
   const categoryId = categories.some((item) => item.id === activeCategory) ? activeCategory : categories[0]?.id;
   const dishes = menu?.dishes.filter((dish) => dish.categoryId === categoryId) ?? [];
-  // Deleted dishes and invalid selections must not contribute to the current menu's totals.
-  const cart = items.flatMap((item) => {
-    const dish = menu?.dishes.find((candidate) => candidate.id === item.dishId);
-    if (!dish || item.specs.some((spec) => !dish.specs.some((group) => group.id === spec.groupId && group.options.some((option) => option.id === spec.optionId)))
-      || dish.specs.some((group) => group.required && !item.specs.some((spec) => spec.groupId === group.id))) return [];
-    return [{ ...item, dish, key: cartItemKey(item.dishId, item.specs), unitPrice: dishPriceInCents(dish, item.specs) }];
-  });
+  const cart = resolveCart(menu, items);
   const quantity = cart.reduce((total, item) => total + item.quantity, 0);
   const total = cart.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
 
@@ -128,7 +121,7 @@ export function CustomerPage() {
         </div>
       </header>
       {!menu ? <p className="px-5 py-16 text-center text-sm text-neutral-500">菜单尚未发布，请稍后再来。</p> : <>
-        <div className="border-b px-5 py-3 font-semibold text-leaf">点餐 <span className="ml-2 text-xs font-normal text-neutral-400">{menu.dishes.length} 道菜品</span></div>
+        <div className="flex items-center justify-between border-b px-5 py-3 font-semibold text-leaf"><span>点餐 <span className="ml-2 text-xs font-normal text-neutral-400">{menu.dishes.length} 道菜品</span></span><Link to={`/m/${storeId}/orders`} className="text-sm font-normal">我的订单</Link></div>
         <div className="grid min-h-[calc(100dvh-260px)] grid-cols-[80px_minmax(0,1fr)] pb-[calc(100px+env(safe-area-inset-bottom))]">
           <nav aria-label="菜品分类" className="bg-neutral-100">
             <div className="sticky top-0 max-h-[calc(100dvh-100px)] overflow-y-auto">
@@ -180,6 +173,7 @@ export function CustomerPage() {
             </div>
           </div>)}
           <div className="mt-5 flex items-center justify-between"><span className="text-sm">共 {quantity} 份</span><strong className="text-lg">合计 {money(total)}</strong></div>
+          <Link to={`/m/${storeId}/checkout`} className="mt-5 flex min-h-12 items-center justify-center rounded-lg bg-citrus text-sm font-semibold">去结算</Link>
         </>}
         <button type="button" onClick={() => setCartOpen(false)} className="mt-5 min-h-11 w-full rounded-lg bg-leaf text-sm font-medium text-white">继续选菜</button>
       </Sheet>}
