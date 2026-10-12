@@ -1,0 +1,27 @@
+{
+  "CreateIndexes": [
+    {
+      "IndexName": "store_version_unique",
+      "MgoKeySchema": {
+        "MgoIndexKeys": [
+          { "Name": "store_id", "Direction": "1" },
+          { "Name": "version", "Direction": "-1" }
+        ],
+        "MgoIsUnique": true,
+        "MgoIsSparse": false
+      }
+    },
+    {
+      "IndexName": "store_status_version",
+      "MgoKeySchema": {
+        "MgoIndexKeys": [
+          { "Name": "store_id", "Direction": "1" },
+          { "Name": "status", "Direction": "1" },
+          { "Name": "version", "Direction": "-1" }
+        ],
+        "MgoIsUnique": false,
+        "MgoIsSparse": false
+      }
+    }
+  ]
+}

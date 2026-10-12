@@ -1,4 +1,6 @@
 import { getStore, resolveTableToken } from './repository'
+import { isCloudConfigured } from './cloud-client'
+import { resolveCloudTable } from './session-service'
 import { parseEntryPayload } from '../utils/scan'
 
 function entryError(code, message) {
@@ -14,6 +16,10 @@ export async function resolveCustomerEntry(rawValue) {
   }
 
   if (payload.type === 'table') {
+    if (isCloudConfigured()) {
+      return resolveCloudTable(payload.tableToken)
+    }
+
     const result = await resolveTableToken(payload.tableToken)
     if (!result) {
       throw entryError('TABLE_NOT_FOUND', '桌码无效或已经更新')

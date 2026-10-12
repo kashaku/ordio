@@ -1,0 +1,14 @@
+{
+  "CreateIndexes": [
+    {
+      "IndexName": "store_unique",
+      "MgoKeySchema": {
+        "MgoIndexKeys": [
+          { "Name": "store_id", "Direction": "1" }
+        ],
+        "MgoIsUnique": true,
+        "MgoIsSparse": false
+      }
+    }
+  ]
+}

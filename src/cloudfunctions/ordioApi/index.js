@@ -1,4 +1,5 @@
 const cloud = require('wx-server-sdk')
+const { normalizeStorefrontConfig } = require('./storefront-config')
 
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
 
@@ -43,6 +44,10 @@ const actions = {
   'session.get': getSession,
   'entry.resolveTable': resolveTable,
   'merchant.listTables': listMerchantTables,
+  'storefront.getDraft': getStorefrontDraft,
+  'storefront.saveDraft': saveStorefrontDraft,
+  'storefront.publish': publishStorefront,
+  'storefront.getPublished': getPublishedStorefront,
 }
 
 async function getSession(payload, wxContext) {
@@ -125,6 +130,144 @@ async function listMerchantTables(payload, wxContext) {
   }))
 }
 
+async function getStorefrontDraft(payload, wxContext) {
+  const storeId = readStoreId(payload)
+  await requireStoreRole(storeId, wxContext, ['owner', 'manager'])
+
+  const result = await db.collection('storefront_drafts')
+    .where({ store_id: storeId })
+    .limit(1)
+    .get()
+  const draft = result.data[0]
+
+  return draft ? formatDraft(draft) : null
+}
+
+async function saveStorefrontDraft(payload, wxContext) {
+  const storeId = readStoreId(payload)
+  const membership = await requireStoreRole(storeId, wxContext, ['owner', 'manager'])
+  await requireEditableStore(storeId)
+
+  const config = normalizeStorefrontConfig(payload.config)
+  const drafts = db.collection('storefront_drafts')
+  const draftId = `storefront-draft-${storeId}`
+  const result = await drafts.where({ store_id: storeId }).limit(1).get()
+  const current = result.data[0]
+  const expectedRevision = Number(payload.revision || 0)
+  const currentRevision = Number(current?.revision || 0)
+
+  if (expectedRevision !== currentRevision) {
+    throw new ApiError('DRAFT_CONFLICT', '主页草稿已被其他设备更新，请刷新后重试')
+  }
+
+  const nextRevision = currentRevision + 1
+  const data = {
+    store_id: storeId,
+    config,
+    revision: nextRevision,
+    published_version: Number(current?.published_version || 0),
+    updated_by: membership.user_id,
+    updated_at: db.serverDate(),
+  }
+
+  if (current) {
+    await drafts.doc(current._id).update({ data })
+  } else {
+    await drafts.doc(draftId).set({
+      data: {
+        ...data,
+        created_by: membership.user_id,
+        created_at: db.serverDate(),
+      },
+    })
+  }
+
+  return {
+    storeId,
+    config,
+    revision: nextRevision,
+    publishedVersion: Number(current?.published_version || 0),
+  }
+}
+
+async function publishStorefront(payload, wxContext) {
+  const storeId = readStoreId(payload)
+  const membership = await requireStoreRole(storeId, wxContext, ['owner', 'manager'])
+  await requireEditableStore(storeId)
+
+  const drafts = db.collection('storefront_drafts')
+  const draftResult = await drafts.where({ store_id: storeId }).limit(1).get()
+  const draft = draftResult.data[0]
+  if (!draft) {
+    throw new ApiError('DRAFT_NOT_FOUND', '请先保存主页草稿')
+  }
+
+  const expectedRevision = Number(payload.revision || 0)
+  if (expectedRevision !== Number(draft.revision || 0)) {
+    throw new ApiError('DRAFT_CONFLICT', '主页草稿已被其他设备更新，请刷新后重试')
+  }
+
+  const config = normalizeStorefrontConfig(draft.config)
+  const releases = db.collection('storefront_releases')
+  const latestResult = await releases
+    .where({ store_id: storeId, status: 'published' })
+    .orderBy('version', 'desc')
+    .limit(1)
+    .get()
+  const version = Number(latestResult.data[0]?.version || 0) + 1
+
+  await releases.add({
+    data: {
+      store_id: storeId,
+      version,
+      status: 'published',
+      config,
+      source_revision: draft.revision,
+      published_by: membership.user_id,
+      published_at: db.serverDate(),
+    },
+  })
+  await drafts.doc(draft._id).update({
+    data: {
+      published_version: version,
+      published_at: db.serverDate(),
+      updated_at: db.serverDate(),
+    },
+  })
+
+  return {
+    storeId,
+    version,
+    config,
+  }
+}
+
+async function getPublishedStorefront(payload) {
+  const storeId = readStoreId(payload)
+  const store = await requireActiveStore(storeId)
+  const result = await db.collection('storefront_releases')
+    .where({ store_id: storeId, status: 'published' })
+    .orderBy('version', 'desc')
+    .limit(1)
+    .get()
+  const release = result.data[0]
+
+  if (!release) {
+    throw new ApiError('STOREFRONT_NOT_PUBLISHED', '门店主页尚未发布')
+  }
+
+  return {
+    store: {
+      id: store._id,
+      name: store.name,
+      address: store.address || '',
+      businessHours: store.business_hours || '',
+    },
+    version: release.version,
+    config: release.config,
+  }
+}
+
 async function findOrCreateUser(openid) {
   const users = db.collection('users')
   const existing = await users.where({ openid }).limit(1).get()
@@ -175,7 +318,45 @@ async function requireStoreRole(storeId, wxContext, allowedRoles) {
   if (!membership || !allowedRoles.includes(membership.role)) {
     throw new ApiError('FORBIDDEN', '当前账号没有执行该操作的权限')
   }
-  return membership
+  return { ...membership, user_id: user._id }
+}
+
+async function requireEditableStore(storeId) {
+  const result = await db.collection('stores').doc(storeId).get()
+  const store = result.data
+  if (!store) {
+    throw new ApiError('STORE_NOT_FOUND', '没有找到对应门店')
+  }
+  if (store.status === 'disabled') {
+    throw new ApiError('STORE_DISABLED', '当前门店已停用')
+  }
+  return store
+}
+
+async function requireActiveStore(storeId) {
+  const result = await db.collection('stores').doc(storeId).get()
+  const store = result.data
+  if (!store || store.status !== 'active') {
+    throw new ApiError('STORE_UNAVAILABLE', '当前门店暂不可用')
+  }
+  return store
+}
+
+function readStoreId(payload) {
+  const storeId = String(payload.storeId || '').trim()
+  if (!/^[a-zA-Z0-9_-]{1,64}$/.test(storeId)) {
+    throw new ApiError('INVALID_STORE_ID', '门店信息无效')
+  }
+  return storeId
+}
+
+function formatDraft(draft) {
+  return {
+    storeId: draft.store_id,
+    config: draft.config,
+    revision: Number(draft.revision || 0),
+    publishedVersion: Number(draft.published_version || 0),
+  }
 }
 
 function normalizeRequestId(value) {

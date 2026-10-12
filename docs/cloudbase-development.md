@@ -11,6 +11,12 @@
 | `session.get` | 建立用户记录并读取门店成员关系 | 微信 OpenID |
 | `entry.resolveTable` | 服务端解析桌台令牌 | 无商家角色要求 |
 | `merchant.listTables` | 读取指定门店桌台 | `owner` 或 `manager` |
+| `storefront.getDraft` | 读取门店主页草稿 | `owner` 或 `manager` |
+| `storefront.saveDraft` | 按修订号保存主页草稿 | `owner` 或 `manager` |
+| `storefront.publish` | 生成不可变主页发布版本 | `owner` 或 `manager` |
+| `storefront.getPublished` | 读取门店最新发布主页 | 顾客可读 |
+
+后四个主页接口当前已在本地代码中实现，尚未部署到开发环境。
 
 云函数统一返回：
 
@@ -95,6 +101,32 @@ updated_at      date
 
 为 `table_token` 建唯一索引，为 `store_id + enabled` 建查询索引。集合默认不开放客户端写权限，核心读写统一经过云函数。
 
+### `storefront_drafts`
+
+```text
+_id
+store_id            stores._id, unique
+config              经过白名单校验的主页配置
+revision            乐观并发修订号
+published_version   最近发布版本
+created_by / updated_by
+created_at / updated_at
+```
+
+### `storefront_releases`
+
+```text
+_id
+store_id            stores._id
+version             门店内递增版本
+status              published
+config              不可变发布快照
+source_revision     来源草稿修订号
+published_by / published_at
+```
+
+需要 `(store_id, version)` 唯一索引，以及 `store_id + status + version` 最新版本查询索引。这两个集合和索引尚待创建。
+
 ## 部署顺序
 
 1. 确认唯一目标环境 ID。
@@ -112,7 +144,10 @@ updated_at      date
 - 集合：`users`、`store_members`、`stores`、`tables` 已创建。
 - 索引：用户 OpenID、门店成员关系、桌台令牌等索引已创建并核对。
 - `session.get`：已在微信模拟器显式调用成功，真实用户记录已创建。
-- 待验证：试点门店、成员和桌台种子写入正在等待开发者工具确认；确认后验证 `entry.resolveTable` 的正常和异常分支。
+- 试点数据：`禾间小馆`、店主成员关系、A01 和 A02 已写入并读取核对。
+- `entry.resolveTable`：有效 A01 令牌和不存在令牌均已通过云函数与完整页面流程验证；桌台停用分支尚待临时写入测试。
+- 顾客入口：配置 CloudBase 时已经切换为服务端桌码解析，未配置环境时才使用本地适配器。
+- 待部署：主页草稿/发布接口、`storefront_drafts`、`storefront_releases` 及其索引。
 - 云函数依赖审计：`wx-server-sdk@4.0.2` 的传递依赖仍有 1 个 moderate、5 个 high；强制修复会降级主依赖，本阶段不执行。
 
 开发种子文件位于 `cloudbase/seeds`。这些文件只用于当前开发环境，写入前仍需核对目标 AppID 和环境 ID；生产环境不得直接复用开发成员身份或桌台令牌。
