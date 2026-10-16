@@ -25,3 +25,5 @@ project.private.config.json
 *.njsproj
 *.sln
 *.sw?
+
+.pnpm-store/
