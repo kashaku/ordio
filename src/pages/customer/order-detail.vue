@@ -1,11 +1,11 @@
 <template>
   <view class="page detail-page">
     <view v-if="loading" class="empty-state">正在读取订单…</view>
-    <view v-else-if="!order" class="empty-state">订单不存在</view>
+    <view v-else-if="!order" class="empty-state">{{ loadError || '订单不存在' }}</view>
     <template v-else>
       <view class="result-card" :class="order.status">
-        <text class="result-kicker">{{ order.status === 'paid' ? 'PAYMENT COMPLETE' : 'ORDER CREATED' }}</text>
-        <text class="result-title">{{ order.status === 'paid' ? '已付款' : '待付款' }}</text>
+        <text class="result-kicker">ORDER RECORD</text>
+        <text class="result-title">{{ order.status === 'paid' ? '已记录（历史本地状态）' : '订单已保存' }}</text>
         <text class="order-id">{{ order.id }}</text>
       </view>
 
@@ -19,7 +19,7 @@
           <text>{{ order.tableName }}桌</text>
         </view>
         <view v-if="order.paidAt" class="detail-line">
-          <text class="muted">付款时间</text>
+          <text class="muted">本地状态更新时间</text>
           <text>{{ formatDate(order.paidAt) }}</text>
         </view>
         <view class="detail-line">
@@ -29,7 +29,7 @@
       </view>
 
       <view class="card items-card">
-        <text class="section-title">商品快照</text>
+        <text class="section-title">订单明细</text>
         <view v-for="item in order.items" :key="item.key" class="item-row">
           <view>
             <text class="item-name">{{ item.name }} × {{ item.quantity }}</text>
@@ -42,14 +42,7 @@
         </view>
       </view>
 
-      <button
-        v-if="order.status === 'pending'"
-        class="primary-button pay-button"
-        :loading="paying"
-        @tap="pay"
-      >
-        模拟付款
-      </button>
+      <view class="empty-state">订单仅保存在当前设备，尚未发送到门店。在线支付暂未开通。</view>
       <button class="secondary-button nav-button" @tap="goOrders">查看历史订单</button>
       <button class="secondary-button nav-button" @tap="goMenu">继续点餐</button>
     </template>
@@ -60,24 +53,34 @@
 import { ref } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
 
-import { getOrder, payOrder } from '../../services/repository'
+import { getOrder } from '../../services/repository'
+import { buildCustomerUrl } from '../../services/entry-service'
 import { formatMoney } from '../../utils/money'
 
 const orderId = ref('')
 const order = ref(null)
 const loading = ref(true)
-const paying = ref(false)
+const tableToken = ref('')
+const loadError = ref('')
 
 onLoad((options) => {
   orderId.value = options.orderId || ''
+  tableToken.value = options.tableToken || ''
 })
 
 onShow(loadOrder)
 
 async function loadOrder() {
   loading.value = true
-  order.value = await getOrder(orderId.value)
-  loading.value = false
+  loadError.value = ''
+  try {
+    order.value = await getOrder(orderId.value)
+  } catch {
+    order.value = null
+    loadError.value = '订单读取失败，请稍后重试'
+  } finally {
+    loading.value = false
+  }
 }
 
 function formatDate(value) {
@@ -89,27 +92,15 @@ function formatDate(value) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
 
-async function pay() {
-  paying.value = true
-  try {
-    order.value = await payOrder(orderId.value)
-    uni.showToast({ title: '付款完成', icon: 'success' })
-  } catch (error) {
-    uni.showToast({ title: error.message || '付款失败', icon: 'none' })
-  } finally {
-    paying.value = false
-  }
-}
-
 function goOrders() {
   uni.navigateTo({
-    url: `/pages/customer/orders?storeId=${encodeURIComponent(order.value.storeId)}`,
+    url: buildCustomerUrl('orders', { storeId: order.value.storeId, tableToken: tableToken.value }),
   })
 }
 
 function goMenu() {
   uni.navigateTo({
-    url: `/pages/customer/menu?storeId=${encodeURIComponent(order.value.storeId)}`,
+    url: buildCustomerUrl('menu', { storeId: order.value.storeId, tableToken: tableToken.value }),
   })
 }
 </script>
@@ -199,7 +190,6 @@ function goMenu() {
   font-size: 22rpx;
 }
 
-.pay-button,
 .nav-button {
   margin-top: 24rpx;
   padding: 25rpx;

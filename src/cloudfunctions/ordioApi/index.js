@@ -16,10 +16,10 @@ exports.main = async (event = {}) => {
   const requestId = normalizeRequestId(event.requestId)
   try {
     const wxContext = cloud.getWXContext()
-    const handler = actions[event.action]
-    if (!handler) {
+    if (!Object.prototype.hasOwnProperty.call(actions, event.action)) {
       throw new ApiError('ACTION_NOT_FOUND', '不支持的操作')
     }
+    const handler = actions[event.action]
     const data = await handler(event.payload || {}, wxContext)
     return { ok: true, data, requestId }
   } catch (error) {

@@ -36,14 +36,17 @@ export async function callCloud(action, payload = {}) {
     throw error
   }
 
-  const response = await wx.cloud.callFunction({
-    name: functionName,
-    data: {
-      action,
-      payload,
-      requestId: createRequestId(),
-    },
-  })
+  let response
+  try {
+    response = await wx.cloud.callFunction({
+      name: functionName,
+      data: { action, payload, requestId: createRequestId() },
+    })
+  } catch {
+    const error = new Error('暂时无法连接门店服务，请检查网络后重试')
+    error.code = 'CLOUD_UNAVAILABLE'
+    throw error
+  }
   const result = response.result
   if (!result?.ok) {
     const error = new Error(result?.error?.message || '云服务调用失败')

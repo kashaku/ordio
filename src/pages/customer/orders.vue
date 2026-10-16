@@ -1,12 +1,13 @@
 <template>
   <view class="page orders-page">
     <view class="orders-heading">
-      <text class="eyebrow">LOCAL ORDERS</text>
+      <text class="eyebrow">ORDER HISTORY</text>
       <text class="title">{{ store?.name || '历史订单' }}</text>
       <text class="muted">仅显示当前设备保存的订单。</text>
     </view>
 
     <view v-if="loading" class="empty-state">正在读取订单…</view>
+    <view v-else-if="loadError" class="empty-state">{{ loadError }}</view>
     <view v-else-if="!orders.length" class="card empty-card">
       <text>还没有订单</text>
       <button class="primary-button" @tap="goMenu">去点餐</button>
@@ -20,7 +21,7 @@
       >
         <view class="order-top">
           <text class="order-status" :class="order.status">
-            {{ order.status === 'paid' ? '已付款' : '待付款' }}
+            {{ order.status === 'paid' ? '历史本地记录' : '已保存' }}
           </text>
           <text class="order-time">{{ formatDate(order.createdAt) }}</text>
         </view>
@@ -39,24 +40,33 @@ import { ref } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
 
 import { getStore, listOrders } from '../../services/repository'
+import { buildCustomerUrl } from '../../services/entry-service'
 import { formatMoney } from '../../utils/money'
 
 const storeId = ref('')
 const store = ref(null)
 const orders = ref([])
 const loading = ref(true)
+const tableToken = ref('')
+const loadError = ref('')
 
 onLoad((options) => {
   storeId.value = options.storeId || ''
+  tableToken.value = options.tableToken || ''
 })
 
 onShow(async () => {
   loading.value = true
-  ;[store.value, orders.value] = await Promise.all([
-    getStore(storeId.value),
-    listOrders(storeId.value),
-  ])
-  loading.value = false
+  loadError.value = ''
+  try {
+    const result = await Promise.all([getStore(storeId.value), listOrders(storeId.value)])
+    ;[store.value, orders.value] = result
+  } catch {
+    orders.value = []
+    loadError.value = '订单读取失败，请稍后重试'
+  } finally {
+    loading.value = false
+  }
 })
 
 function formatDate(value) {
@@ -67,13 +77,13 @@ function formatDate(value) {
 
 function openOrder(order) {
   uni.navigateTo({
-    url: `/pages/customer/order-detail?orderId=${encodeURIComponent(order.id)}`,
+    url: buildCustomerUrl('order-detail', { orderId: order.id, tableToken: tableToken.value }),
   })
 }
 
 function goMenu() {
   uni.navigateTo({
-    url: `/pages/customer/menu?storeId=${encodeURIComponent(storeId.value)}`,
+    url: buildCustomerUrl('menu', { storeId: storeId.value, tableToken: tableToken.value }),
   })
 }
 </script>

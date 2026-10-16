@@ -28,12 +28,8 @@ export const storefrontAccentColors = [
   '#7A4B78',
 ]
 
-export function createDefaultStorefront(storeId, dishIds = []) {
-  const now = new Date().toISOString()
+export function createDefaultStorefrontConfig(dishIds = []) {
   return {
-    id: `storefront-${storeId}`,
-    storeId,
-    status: 'draft',
     templateId: 'warm',
     accentColor: '#B85C38',
     hero: {
@@ -73,7 +69,16 @@ export function createDefaultStorefront(storeId, dishIds = []) {
         content: '',
       },
     ],
-    updatedAt: now,
+  }
+}
+
+export function createDefaultStorefront(storeId, dishIds = []) {
+  return {
+    id: `storefront-${storeId}`,
+    storeId,
+    status: 'draft',
+    ...createDefaultStorefrontConfig(dishIds),
+    updatedAt: new Date().toISOString(),
     publishedAt: null,
   }
 }

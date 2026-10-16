@@ -32,6 +32,7 @@ export async function resolveCustomerEntry(rawValue) {
       storeId: result.store.id,
       tableId: result.table.id,
       tableName: result.table.name,
+      tableArea: result.table.area || '',
       tableToken: result.table.token,
     }
   }
@@ -50,10 +51,25 @@ export async function resolveCustomerEntry(rawValue) {
   }
 }
 
-export function buildStorefrontUrl(entry) {
-  const params = [`storeId=${encodeURIComponent(entry.storeId)}`]
-  if (entry.tableToken) {
-    params.push(`tableToken=${encodeURIComponent(entry.tableToken)}`)
+export async function resolveCustomerTable(storeId, tableToken) {
+  if (!tableToken) {
+    return null
   }
-  return `/pages/customer/storefront?${params.join('&')}`
+  const entry = await resolveCustomerEntry(tableToken)
+  if (entry.type !== 'table' || entry.storeId !== storeId) {
+    throw entryError('TABLE_INVALID', '桌码与当前门店不匹配，请重新扫码')
+  }
+  return { id: entry.tableId, name: entry.tableName, area: entry.tableArea || '' }
+}
+
+export function buildCustomerUrl(page, params) {
+  const query = Object.entries(params)
+    .filter(([, value]) => value)
+    .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
+    .join('&')
+  return `/pages/customer/${page}?${query}`
+}
+
+export function buildStorefrontUrl(entry) {
+  return buildCustomerUrl('storefront', { storeId: entry.storeId, tableToken: entry.tableToken })
 }

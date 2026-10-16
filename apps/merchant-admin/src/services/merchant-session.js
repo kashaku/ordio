@@ -1,6 +1,6 @@
 import { reactive } from 'vue'
 
-const apiBase = String(import.meta.env.VITE_MERCHANT_API_BASE || '').replace(/\/$/, '')
+const apiBase = String(import.meta.env.VITE_MERCHANT_API_BASE || '').trim().replace(/\/$/, '')
 const devSessionKey = 'ordio:merchant-admin:dev-session'
 
 export const merchantSession = reactive({
@@ -11,13 +11,15 @@ export const merchantSession = reactive({
 })
 
 export const merchantApiConfigured = Boolean(apiBase)
-export const localAccessAvailable = import.meta.env.DEV
+export const localAccessAvailable = import.meta.env.DEV && !merchantApiConfigured
 
 export async function restoreMerchantSession() {
   merchantSession.status = 'loading'
   merchantSession.error = ''
+  merchantSession.user = null
+  merchantSession.memberships = []
 
-  if (import.meta.env.DEV && sessionStorage.getItem(devSessionKey) === '1') {
+  if (localAccessAvailable && sessionStorage.getItem(devSessionKey) === '1') {
     setDevelopmentSession()
     return
   }
@@ -53,14 +55,15 @@ export function beginMerchantLogin(returnTo = '/') {
   if (!merchantApiConfigured) {
     throw new Error('商家登录服务尚未配置')
   }
-  const url = new URL(`${apiBase}/merchant/login`)
-  url.searchParams.set('returnTo', new URL(returnTo, window.location.origin).toString())
+  const url = new URL(`${apiBase}/merchant/login`, window.location.origin)
+  const destination = new URL(returnTo, window.location.origin)
+  url.searchParams.set('returnTo', destination.origin === window.location.origin ? destination.toString() : window.location.origin)
   window.location.assign(url)
 }
 
 export function enterDevelopmentSession() {
-  if (!import.meta.env.DEV) {
-    throw new Error('生产环境不支持本地开发会话')
+  if (!localAccessAvailable) {
+    throw new Error('当前环境不支持本地预览会话')
   }
   sessionStorage.setItem(devSessionKey, '1')
   setDevelopmentSession()
@@ -69,7 +72,10 @@ export function enterDevelopmentSession() {
 export async function signOut() {
   sessionStorage.removeItem(devSessionKey)
   if (merchantApiConfigured) {
-    await fetch(`${apiBase}/merchant/logout`, { method: 'POST', credentials: 'include' })
+    const response = await fetch(`${apiBase}/merchant/logout`, { method: 'POST', credentials: 'include' })
+    if (!response.ok) {
+      throw new Error('退出失败，请重试')
+    }
   }
   merchantSession.user = null
   merchantSession.memberships = []

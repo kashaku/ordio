@@ -66,10 +66,6 @@ export const useCartStore = defineStore('cart', {
       await this.persist(storeId)
     },
 
-    async removeItem(storeId, key) {
-      await this.setQuantity(storeId, key, 0)
-    },
-
     async replaceItems(storeId, items) {
       this.carts = { ...this.carts, [storeId]: items }
       await this.persist(storeId)
@@ -79,9 +75,5 @@ export const useCartStore = defineStore('cart', {
       await this.replaceItems(storeId, [])
     },
 
-    resetState() {
-      this.currentStoreId = ''
-      this.carts = {}
-    },
   },
 })

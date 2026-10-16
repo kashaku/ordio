@@ -38,7 +38,7 @@
 
       <view class="notice card">
         <text class="notice-title">订单说明</text>
-        <text class="notice-copy">提交后会生成待付款订单，在线支付将在服务端接入后开放。</text>
+        <text class="notice-copy">订单仅保存在当前设备，尚未发送到门店。在线支付暂未开通。</text>
       </view>
 
       <view v-if="!table" class="table-warning card">
@@ -48,7 +48,7 @@
 
       <button
         class="primary-button submit-button"
-        :disabled="!table"
+        :disabled="!table || submitting"
         :loading="submitting"
         @tap="submitOrder"
       >
@@ -63,7 +63,8 @@ import { computed, ref } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
 
 import { createOrder, resolveCart } from '../../services/order-service'
-import { getStore, resolveTableToken } from '../../services/repository'
+import { getStore } from '../../services/repository'
+import { buildCustomerUrl, resolveCustomerTable } from '../../services/entry-service'
 import { useCartStore } from '../../stores/cart'
 import { formatMoney } from '../../utils/money'
 
@@ -95,15 +96,7 @@ async function loadCheckout() {
   loading.value = true
   loadError.value = ''
   try {
-    if (tableToken.value) {
-      const result = await resolveTableToken(tableToken.value)
-      if (!result || !result.table.enabled || result.store.id !== storeId.value) {
-        throw new Error('桌码已失效，请重新扫码')
-      }
-      table.value = result.table
-    } else {
-      table.value = null
-    }
+    table.value = await resolveCustomerTable(storeId.value, tableToken.value)
     store.value = await getStore(storeId.value)
     await cartStore.load(storeId.value)
     const result = await resolveCart(storeId.value, cartStore.currentItems)
@@ -127,7 +120,7 @@ async function loadCheckout() {
 }
 
 async function submitOrder() {
-  if (!cartStore.currentItems.length) {
+  if (submitting.value || !cartStore.currentItems.length) {
     return
   }
   if (!table.value) {
@@ -141,7 +134,7 @@ async function submitOrder() {
     })
     await cartStore.clear(storeId.value)
     uni.redirectTo({
-      url: `/pages/customer/order-detail?orderId=${encodeURIComponent(order.id)}`,
+      url: buildCustomerUrl('order-detail', { orderId: order.id, tableToken: tableToken.value }),
     })
   } catch (error) {
     if (error.code === 'INVALID_CART') {
@@ -156,7 +149,9 @@ async function submitOrder() {
 }
 
 function backToMenu() {
-  uni.navigateBack()
+  uni.redirectTo({
+    url: buildCustomerUrl('menu', { storeId: storeId.value, tableToken: tableToken.value }),
+  })
 }
 </script>
 

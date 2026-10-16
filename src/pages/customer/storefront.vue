@@ -1,6 +1,6 @@
 <template>
   <view
-    v-if="store && storefront"
+    v-if="!loading && !loadError && store && storefront"
     class="storefront-page"
     :class="`template-${storefront.templateId}`"
     :style="{ '--accent': storefront.accentColor }"
@@ -91,7 +91,8 @@
 import { computed, ref } from 'vue'
 import { onLoad, onPullDownRefresh, onShow } from '@dcloudio/uni-app'
 
-import { getPublishedMenu, getPublishedStorefront, getStore, resolveTableToken } from '../../services/repository'
+import { getPublishedMenu, getPublishedStorefront, getStore } from '../../services/repository'
+import { buildCustomerUrl, resolveCustomerTable } from '../../services/entry-service'
 import { formatMoney } from '../../utils/money'
 
 const storeId = ref('')
@@ -103,7 +104,7 @@ const menu = ref(null)
 const loading = ref(true)
 const loadError = ref('')
 
-const visibleBlocks = computed(() => storefront.value?.blocks.filter((block) => block.visible) || [])
+const visibleBlocks = computed(() => storefront.value?.blocks.filter((block) => block.visible && (block.type !== 'featured' || featuredDishes.value.length)) || [])
 const featuredDishes = computed(() => {
   const ids = new Set(storefront.value?.featuredDishIds || [])
   return menu.value?.dishes.filter((dish) => ids.has(dish.id)) || []
@@ -134,42 +135,36 @@ async function loadPage() {
   }
   loading.value = true
   loadError.value = ''
-  if (tableToken.value) {
-    const result = await resolveTableToken(tableToken.value)
-    if (!result || !result.table.enabled || result.store.id !== storeId.value) {
-      store.value = null
-      storefront.value = null
-      loadError.value = '桌码无效或已经更新，请重新扫码'
-      loading.value = false
-      return
-    }
-    table.value = result.table
-  } else {
+  try {
+    table.value = await resolveCustomerTable(storeId.value, tableToken.value)
+    const [storeResult, storefrontResult, menuResult] = await Promise.all([
+      getStore(storeId.value),
+      getPublishedStorefront(storeId.value),
+      getPublishedMenu(storeId.value),
+    ])
+    store.value = storeResult
+    storefront.value = storefrontResult
+    menu.value = menuResult
+  } catch (error) {
+    store.value = null
     table.value = null
+    menu.value = null
+    storefront.value = null
+    loadError.value = error.message || '门店读取失败，请稍后重试'
+  } finally {
+    loading.value = false
   }
-  const [storeResult, storefrontResult, menuResult] = await Promise.all([
-    getStore(storeId.value),
-    getPublishedStorefront(storeId.value),
-    getPublishedMenu(storeId.value),
-  ])
-  store.value = storeResult
-  storefront.value = storefrontResult
-  menu.value = menuResult
-  loading.value = false
 }
 
 function goMenu() {
-  const tableQuery = tableToken.value
-    ? `&tableToken=${encodeURIComponent(tableToken.value)}`
-    : ''
   uni.navigateTo({
-    url: `/pages/customer/menu?storeId=${encodeURIComponent(storeId.value)}${tableQuery}`,
+    url: buildCustomerUrl('menu', { storeId: storeId.value, tableToken: tableToken.value }),
   })
 }
 
 function goOrders() {
   uni.navigateTo({
-    url: `/pages/customer/orders?storeId=${encodeURIComponent(storeId.value)}`,
+    url: buildCustomerUrl('orders', { storeId: storeId.value, tableToken: tableToken.value }),
   })
 }
 </script>

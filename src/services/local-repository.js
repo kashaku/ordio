@@ -396,32 +396,6 @@ async function listOrders(storeId) {
     .map(clone)
 }
 
-async function payOrder(orderId) {
-  await initialize()
-  const orders = read(keys.orders, [])
-  const index = orders.findIndex((item) => item.id === orderId)
-  if (index < 0) {
-    throw new Error('订单不存在')
-  }
-  if (orders[index].status === 'paid') {
-    return clone(orders[index])
-  }
-
-  orders[index] = {
-    ...orders[index],
-    status: 'paid',
-    paidAt: new Date().toISOString(),
-  }
-  write(keys.orders, orders)
-  return clone(orders[index])
-}
-
-async function resetDemoData() {
-  const state = createSeedState()
-  writeState(state)
-  return clone(state)
-}
-
 export const localRepository = {
   initialize,
   getStore,
@@ -444,6 +418,4 @@ export const localRepository = {
   saveOrder,
   getOrder,
   listOrders,
-  payOrder,
-  resetDemoData,
 }

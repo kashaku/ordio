@@ -22,8 +22,6 @@ export const repositoryMethods = Object.freeze([
   'saveOrder',
   'getOrder',
   'listOrders',
-  'payOrder',
-  'resetDemoData',
 ])
 
 let activeRepository = localRepository
@@ -57,5 +55,4 @@ export const saveCart = (...args) => activeRepository.saveCart(...args)
 export const saveOrder = (...args) => activeRepository.saveOrder(...args)
 export const getOrder = (...args) => activeRepository.getOrder(...args)
 export const listOrders = (...args) => activeRepository.listOrders(...args)
-export const payOrder = (...args) => activeRepository.payOrder(...args)
 export const resetDemoData = (...args) => activeRepository.resetDemoData(...args)

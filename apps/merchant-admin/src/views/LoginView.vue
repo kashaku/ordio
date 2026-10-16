@@ -11,7 +11,7 @@
       <div class="login-copy">
         <p class="eyebrow">STORE OPERATIONS</p>
         <h1>管理门店，也保留每家店自己的样子。</h1>
-        <p>订单、菜单、主页和桌台统一管理。顾客小程序与商家后台入口完全分开。</p>
+        <p>为门店选择主页样式，编辑公告和介绍，预览顾客看到的内容。</p>
       </div>
     </section>
 
@@ -23,14 +23,14 @@
 
         <p v-if="merchantSession.error" class="form-error">{{ merchantSession.error }}</p>
         <button class="primary-action" type="button" :disabled="!merchantApiConfigured" @click="login">
-          微信扫码登录
+          登录管理后台
         </button>
-        <p v-if="!merchantApiConfigured" class="config-hint">当前尚未配置商家登录服务，生产构建会停留在此页。</p>
+        <p v-if="!merchantApiConfigured" class="config-hint">商家登录服务暂未开通。</p>
 
         <button v-if="localAccessAvailable" class="development-action" type="button" @click="enterLocal">
-          进入开发预览
+          预览工作台
         </button>
-        <p v-if="localAccessAvailable" class="development-note">仅开发服务器提供此入口，不会进入生产构建。</p>
+        <p v-if="localAccessAvailable" class="development-note">预览内容仅保存在当前浏览器，不会同步到顾客小程序。</p>
       </div>
     </section>
   </main>

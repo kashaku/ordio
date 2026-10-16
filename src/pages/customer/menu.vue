@@ -14,6 +14,7 @@
     </view>
 
     <view v-if="loading" class="empty-state">正在读取菜单…</view>
+    <view v-else-if="loadError" class="empty-state">{{ loadError }}</view>
     <view v-else-if="!menu" class="empty-state">
       <text>该店铺暂时没有已发布菜单</text>
     </view>
@@ -43,6 +44,7 @@
     </view>
 
     <cart-panel
+      v-if="!loading && !loadError && menu"
       :items="displayCartItems"
       :count="cartStore.totalQuantity"
       :total-in-cents="cartTotal"
@@ -67,7 +69,8 @@ import CartPanel from '../../components/cart-panel/cart-panel.vue'
 import DishCard from '../../components/dish-card/dish-card.vue'
 import SpecPopup from '../../components/spec-popup/spec-popup.vue'
 import { priceCartItem, resolveCart } from '../../services/order-service'
-import { getPublishedMenu, getStore, resolveTableToken } from '../../services/repository'
+import { getPublishedMenu, getStore } from '../../services/repository'
+import { buildCustomerUrl, resolveCustomerTable } from '../../services/entry-service'
 import { useCartStore } from '../../stores/cart'
 
 const cartStore = useCartStore()
@@ -79,6 +82,7 @@ const menu = ref(null)
 const activeCategoryId = ref('')
 const selectedDish = ref(null)
 const loading = ref(true)
+const loadError = ref('')
 
 const activeCategory = computed(() =>
   menu.value?.categories.find((item) => item.id === activeCategoryId.value),
@@ -134,38 +138,36 @@ async function loadPage() {
   }
 
   loading.value = true
-  if (tableToken.value) {
-    const result = await resolveTableToken(tableToken.value)
-    if (!result || !result.table.enabled || result.store.id !== storeId.value) {
-      store.value = null
-      menu.value = null
-      loading.value = false
-      uni.showToast({ title: '桌码已失效，请重新扫码', icon: 'none' })
-      return
+  loadError.value = ''
+  selectedDish.value = null
+  try {
+    table.value = await resolveCustomerTable(storeId.value, tableToken.value)
+    const [storeResult, menuResult] = await Promise.all([
+      getStore(storeId.value),
+      getPublishedMenu(storeId.value),
+      cartStore.load(storeId.value),
+    ])
+    store.value = storeResult
+    menu.value = menuResult
+    if (menuResult) {
+      const cartResult = await resolveCart(storeId.value, cartStore.currentItems)
+      if (cartResult.invalidItems.length) {
+        await cartStore.replaceItems(storeId.value, cartResult.validCartItems)
+        uni.showToast({ title: '已移除失效购物车商品', icon: 'none' })
+      }
     }
-    table.value = result.table
-  } else {
+    if (menuResult?.categories.length) {
+      const exists = menuResult.categories.some((item) => item.id === activeCategoryId.value)
+      activeCategoryId.value = exists ? activeCategoryId.value : menuResult.categories[0].id
+    }
+  } catch (error) {
+    store.value = null
     table.value = null
+    menu.value = null
+    loadError.value = error.message || '门店读取失败，请稍后重试'
+  } finally {
+    loading.value = false
   }
-  const [storeResult, menuResult] = await Promise.all([
-    getStore(storeId.value),
-    getPublishedMenu(storeId.value),
-    cartStore.load(storeId.value),
-  ])
-  store.value = storeResult
-  menu.value = menuResult
-  if (menuResult) {
-    const cartResult = await resolveCart(storeId.value, cartStore.currentItems)
-    if (cartResult.invalidItems.length) {
-      await cartStore.replaceItems(storeId.value, cartResult.validCartItems)
-      uni.showToast({ title: '已移除失效购物车商品', icon: 'none' })
-    }
-  }
-  if (menuResult?.categories.length) {
-    const exists = menuResult.categories.some((item) => item.id === activeCategoryId.value)
-    activeCategoryId.value = exists ? activeCategoryId.value : menuResult.categories[0].id
-  }
-  loading.value = false
 }
 
 async function selectDish(dish) {
@@ -192,17 +194,14 @@ async function changeQuantity(key, quantity) {
 }
 
 function goCheckout() {
-  const tableQuery = tableToken.value
-    ? `&tableToken=${encodeURIComponent(tableToken.value)}`
-    : ''
   uni.navigateTo({
-    url: `/pages/customer/checkout?storeId=${encodeURIComponent(storeId.value)}${tableQuery}`,
+    url: buildCustomerUrl('checkout', { storeId: storeId.value, tableToken: tableToken.value }),
   })
 }
 
 function goOrders() {
   uni.navigateTo({
-    url: `/pages/customer/orders?storeId=${encodeURIComponent(storeId.value)}`,
+    url: buildCustomerUrl('orders', { storeId: storeId.value, tableToken: tableToken.value }),
   })
 }
 </script>

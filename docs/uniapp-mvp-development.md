@@ -1,89 +1,93 @@
-# Ordio uni-app MVP 开发说明
+# 开发说明
 
-## 技术和运行边界
+核对日期：2026-10-16。运行和演示步骤统一见 [README](../README.md)，本文件说明当前源码和数据流。
 
-- uni-app CLI、Vue 3、Vite、JavaScript、Composition API
-- Pinia 只管理当前店铺和购物车
-- `uni.setStorageSync`、`uni.getStorageSync` 保存本机开发数据
-- 内部金额全部使用整数分
-- 微信基础库固定为 `3.17.2`
-- 商家端和顾客端位于同一个小程序，不代表跨设备同步
-
-源码直接位于仓库根目录。微信开发者工具打开编译产物，不打开 `src`：
+## 实际目录
 
 ```text
-开发：dist/dev/mp-weixin
-构建：dist/build/mp-weixin
+src/
+  pages/index/             顾客首页
+  pages/customer/          扫码、主页、菜单、结算、订单
+  pages/merchant/          迁移期本地商家页，仍打包
+  components/             菜品卡、规格弹层、购物车
+  services/               本地 repository、云客户端、入口和订单逻辑
+  stores/                 Pinia 购物车状态
+  data/                   本地种子和主页模板
+  utils/                  参数解析、金额、ID、图片和令牌
+  cloudfunctions/ordioApi/ 云函数源码，独立 package.json 和锁文件
+  manifest.json           AppID、基础库、cloudfunctionRoot 等构建配置
+  pages.json              小程序路由
+apps/merchant-admin/      独立 Vue Web 管理端，使用根依赖
+cloudbase/indexes/        云数据库索引定义
+cloudbase/seeds/          指定开发环境的查询和更新文件
+scripts/                 本机工具脚本
+tests/                   Node 测试
+docs/                    按用途拆分的说明
+dev-log.md               唯一开发日志
 ```
 
-## 页面
+根 `package.json` 管理两个前端。云函数使用自己的依赖清单，部署以 `src/cloudfunctions/ordioApi` 为源。`vite.config.js` 会把云函数复制到微信构建产物；复制不等于部署。
 
-| 页面 | 路径 |
-| --- | --- |
-| 顾客首页 | `pages/index/index` |
-| 商家工作台 | `pages/merchant/index` |
-| 扫码入口 | `pages/customer/scan` |
-| 有效桌码入口 | `pages/customer/scan?scene=t%3Dtbl_xxx` |
-| 门店主页 | `pages/customer/storefront?storeId=store-demo&tableToken=tbl_xxx` |
-| 顾客菜单 | `pages/customer/menu?storeId=store-demo&tableToken=tbl_xxx` |
-| 确认订单 | `pages/customer/checkout?storeId=store-demo&tableToken=tbl_xxx` |
-| 订单结果 | `pages/customer/order-detail?orderId=order-xxx` |
-| 订单列表 | `pages/customer/orders?storeId=store-demo` |
+`dist/`、`node_modules/` 是忽略提交的生成目录。`dist/dev/mp-weixin` 与 `dist/build/mp-weixin` 分别由开发、正式构建生成，`dist/merchant-admin` 为 Web 构建产物。不要把它们当成三套源码，也不要手工修改其中的业务文件。
 
-## 数据规则
+仓库没有 `weapp/`、原生 `miniprogram/` 或 `apps/customer-mini/` 源码目录。未来拆分目录需单独迁移；文档不再把规划目录当成当前结构。
 
-缓存键：
+## 当前数据流
 
-```text
-ordio:mvp:version
-ordio:mvp:stores
-ordio:mvp:tables
-ordio:mvp:draft-menus
-ordio:mvp:published-menus
-ordio:mvp:draft-storefronts
-ordio:mvp:published-storefronts
-ordio:mvp:carts
-ordio:mvp:orders
-```
+| 功能 | 调用位置 | 当前数据源 |
+| --- | --- | --- |
+| 微信身份 | `App.vue → session-service → cloud-client` | 已配置时调用 `session.get`；未配置时跳过 |
+| 扫码令牌解析 | `scan.vue → entry-service` | 已配置时调用 `entry.resolveTable`，否则本地 `resolveTableToken` |
+| 顾客主页 | `storefront.vue → repository` | 本地门店、主页发布副本、菜单；桌台也重新从本地读取 |
+| 菜单与结算 | `menu.vue / checkout.vue → repository / order-service` | 本地菜单、桌台、购物车和重新计价 |
+| 订单与付款 | `order-service / order-detail.vue → repository` | 本地创建订单；`payOrder` 只更新缓存状态 |
+| 旧小程序商家页 | `pages/merchant/index.vue → repository` | 本机草稿、发布副本、桌台；不修改云端 |
+| 商家 Web | `apps/merchant-admin/src/services` | 未配置 API 时使用浏览器预览会话和草稿；配置后请求尚待实现的 HTTP 服务 |
 
-页面通过 `repository.js` 和 `order-service.js` 读写数据。`repository.js` 是稳定调用入口，当前默认适配器为 `local-repository.js`；页面不直接访问 `uni.getStorageSync` 或 `uni.setStorageSync`。后续接入 CloudBase 时替换适配器，不改页面调用方向。
+`repository.js` 默认绑定 `localRepository`，目前没有云端 repository 实现。配置云环境不会自动替换它。扫码入口通过云端校验后，后续主页和结算仍依赖本地桌台；新增或轮换云端令牌可能在后续页面失败。本地 A01 与云端种子一致时能演示，这不是完整云端订单链路。
 
-`repository.js` 当前约定了店铺、桌台、菜单、购物车和订单所需的方法，并在切换适配器时检查接口是否完整。`local-repository.js` 保留现有缓存键和数据结构，数据迁移会补充新字段和桌台数据。草稿发布时深拷贝为已发布菜单，顾客只能读取已发布内容。
+小程序中的 `getPublishedStorefront` 是本地 repository 方法；云函数动作 `storefront.getPublished` 是另一条尚未接入顾客页面的接口。两者不能混称为“顾客已经读取云端发布版”。
 
-门店主页同样使用草稿和发布副本。商家可选择模板和品牌色，编辑首屏文案，控制公告、招牌推荐、品牌故事、到店信息四类区块的显隐和顺序，并从菜单选择最多四个招牌菜。顾客主页只读取已发布副本。
+商家 Web 的 `localStorage` 与小程序的 `uni` 缓存完全独立，Web 保存草稿不会修改顾客所见内容。主页模板默认值目前在小程序和 Web 各维护一份；后续接入正式发布时统一契约并验证迁移，不在目录整理时擅改存量草稿。
 
-店铺资料和菜单草稿分开保存。店铺资料保存后立即对顾客页生效；分类、菜品和规格只有发布后才进入顾客菜单。
+## 页面与入口
 
-购物车只保存菜品 ID、规格 ID 和数量。结算和创建订单时重新读取已发布菜单，校验菜品及规格并重新计算价格。订单保存商品名称、图片、规格、单价和数量快照。
+`src/pages.json` 注册 8 个页面：
 
-桌码入口统一由 `entry-service.js` 解析。当前开发数据使用 `scene=t=<tableToken>`，兼容旧 `storeId` 仅用于浏览；未识别到有效桌台、桌台停用或令牌已更新时不能创建堂食订单。正式小程序码图片还没有接入，后续由云函数调用微信服务端能力生成。
+| 路径 | 用途 | 主要参数 |
+| --- | --- | --- |
+| `pages/index/index` | 默认顾客首页 | 无；不处理桌台启动参数 |
+| `pages/customer/scan` | 解析入口并跳转主页 | `tableToken` 或 `scene`；兼容 `storeId` |
+| `pages/customer/storefront` | 门店主页 | `storeId`、可选 `tableToken` |
+| `pages/customer/menu` | 菜单 | 同上 |
+| `pages/customer/checkout` | 结算 | 同上，无有效桌台不能提交 |
+| `pages/customer/order-detail` | 本地订单详情 | `orderId` |
+| `pages/customer/orders` | 本地订单列表 | `storeId` |
+| `pages/merchant/index` | 本地商家编辑参照 | 内部固定 `store-demo` |
 
-## 开发约束
+演示入口应从扫码页带参数进入，不能把参数填在默认首页后期待它自动解析。Web 路由是 `/login`、`/`、`/storefront`，与小程序页面路径无关。
 
-- 不单独升级 Vue、Vite 或某一个 `@dcloudio/*` 包
-- 固定使用 `pinia@2.1.7`
-- 不给 `package.json` 添加 `"type": "module"`，当前 uni-app 编译配置会因此失效
-- 不提交 `node_modules/` 和 `dist/`
-- 不使用 HBuilderX 编译，不直接修改构建产物
-- 开发者工具使用稳定基础库，不使用灰度基础库
-- 真实支付、登录、云数据库、评论和菜单画布不进入当前版本
+## 本地数据规则
 
-## 2026-10-09 验收结果
+缓存前缀为 `ordio:mvp:`，后缀为 `version`、`stores`、`tables`、`draft-menus`、`published-menus`、`draft-storefronts`、`published-storefronts`、`carts`、`orders`。初始化和版本迁移在 `local-repository.js`；旧版本补数据的行为以代码分支为准，不承诺所有未知版本都无损迁移。
 
-- `npm ci` 成功，随后 `npm run build:mp-weixin` 成功。
-- 构建产物包含 7 个页面，AppID 为 `wx3a13cbb8859858e6`，基础库为 `3.17.2`。
-- 微信开发者工具 `2.02.2608080` 可打开开发产物，最终 console 错误筛选为空。
-- 模拟器完成商家发布、规格选择、失效购物车项清理、结算、下单、付款和订单列表流程。
-- 店铺名称单独保存后，顾客菜单立即读取到新名称，菜单发布状态未改变。
-- 订单金额 `¥36.00`、规格“正常饭量”和已付款状态均由实际页面读取确认。
-- 清空缓存并重新进入首页后，本地业务缓存重新生成，购物车与订单为空，初始店铺恢复。
-- 真机预览码已成功生成，代码包大小 `304695` 字节；用户已确认真机预览正常。
-- 图片选择和相机扫码依赖系统 UI，仍待人工确认。
+- 门店资料单独保存，本机顾客页再次读取时生效。
+- 菜单与主页各自保存草稿，发布时深拷贝为当前发布副本。本地实现不保留完整发布历史。
+- 金额使用整数分；购物车保存菜品 ID、规格和数量；客户端结算重新校验菜单并保存订单商品快照。
+- 本地订单包含桌台 ID 和桌号，当前没有区域快照；订单列表只按门店过滤，没有服务端“仅本人订单”授权。
+- 图片保存在本机持久文件，尚未接云存储。
+- 重置开发数据会覆盖本机业务缓存；排障时不要先清空用户数据。
 
-### 入口与桌台补充验收
+## 构建与依赖
 
-- 有效 `scene=t=<tableToken>` 可进入对应门店主页，并显示“大厅 · A01桌”。
-- 无效令牌停留在扫码页并显示“桌码无效或已经更新”。
-- 商家工作台读取到两条初始桌台；支持创建、启停和更新令牌。
-- 未携带有效桌台的旧 `storeId` 入口只能浏览，结算页禁止提交堂食订单。
-- 正式小程序码生成、跨设备同步和服务端权限仍未接入。
+使用 uni-app CLI、Vue 3、Vite 和 Pinia。2026-10-16 本机 Node `22.17.0`、npm `10.9.2`；微信基础库在 `manifest.json` 固定为 `3.17.2`。
+
+根脚本只保留微信小程序、商家 Web 和已有测试入口。模板自带的其他平台依赖仍留在锁文件中，本次未拆改 DCloud 依赖组；保留依赖不代表项目支持并验收了其他平台。
+
+- 不单独升级 Vue、Vite 或某一个 `@dcloudio/*` 包；当前 Pinia 固定为 `2.1.7`。
+- 不为整理目录添加根 `type: module`，当前 uni-app 配置依赖既有模块模式。
+- Vue 页面类型扩展统一放在根 `shims-uni.d.ts`。
+- `.env.local` 更改后重启编译；`VITE_*` 可进入客户端包，不放密钥。
+- `manifest.json` 中的 `urlCheck: false` 是开发设置，正式发布前需要核对域名与发布配置。
+
+验证范围和当次结果记录在[开发日志](../dev-log.md)。历史构建警告、依赖审计数字只表示记录当时的结果，不当成当前已修复或当前审计结论。

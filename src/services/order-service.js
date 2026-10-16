@@ -1,5 +1,6 @@
 import { createId, normalizeSelectedSpecs } from '../utils/id'
-import { getPublishedMenu, resolveTableToken, saveOrder } from './repository'
+import { getPublishedMenu, saveOrder } from './repository'
+import { resolveCustomerTable } from './entry-service'
 
 export function priceCartItem(cartItem, menu) {
   const dish = menu?.dishes?.find((item) => item.id === cartItem.dishId)
@@ -110,13 +111,7 @@ export async function createOrder(storeId, cartItems, entry = {}) {
     throw error
   }
 
-  const resolvedTable = await resolveTableToken(entry.tableToken)
-  if (!resolvedTable || !resolvedTable.table.enabled || resolvedTable.store.id !== storeId) {
-    const error = new Error('桌码已失效，请重新扫码')
-    error.code = 'TABLE_INVALID'
-    throw error
-  }
-  const table = resolvedTable.table
+  const table = await resolveCustomerTable(storeId, entry.tableToken)
 
   const createdAt = new Date().toISOString()
   const order = {

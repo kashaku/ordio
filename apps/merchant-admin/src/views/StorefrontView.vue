@@ -7,11 +7,16 @@
           <h1>主页搭建</h1>
           <p>从适配好的模板开始配置，不需要从空白画布设计。</p>
         </div>
-        <span class="draft-state">开发预览草稿</span>
+        <span class="draft-state">{{ merchantApiConfigured ? (dirty ? '有未保存修改' : '云端草稿') : '浏览器预览' }}</span>
       </div>
 
+      <p v-if="loading">正在读取主页草稿…</p>
+      <p v-if="!loading && !ready" class="form-error">
+        {{ errorMessage }}
+        <button type="button" @click="loadDraft">重新读取</button>
+      </p>
       <div class="builder-layout">
-        <section class="builder-controls">
+        <fieldset class="builder-controls" :disabled="loading || !ready || saving || publishing">
           <div class="control-section">
             <h2>选择模板</h2>
             <div class="template-grid">
@@ -39,7 +44,7 @@
                 :key="color"
                 type="button"
                 :aria-label="`选择颜色 ${color}`"
-                :class="{ selected: draft.accentColor === color }"
+                :class="{ selected: draft.accentColor.toLowerCase() === color.toLowerCase() }"
                 :style="{ background: color }"
                 @click="draft.accentColor = color"
               />
@@ -77,7 +82,7 @@
                 <textarea :id="`${block.id}-content`" v-model="block.content" maxlength="500" rows="3" />
               </template>
               <p v-else class="block-source-hint">
-                {{ block.type === 'featured' ? '招牌菜将从当前门店已发布菜单中选择。' : '地址和营业时间自动读取门店资料。' }}
+                {{ block.type === 'featured' ? '招牌菜选择暂未开放，已有菜品配置会保留。' : '地址和营业时间自动读取门店资料。' }}
               </p>
             </article>
           </div>
@@ -90,15 +95,16 @@
             <button
               class="publish-action"
               type="button"
-              :disabled="!merchantApiConfigured || publishing || revision === 0"
+              :disabled="!merchantApiConfigured || publishing || saving || dirty || revision === 0"
               @click="publishDraft"
             >
               {{ publishing ? '正在发布…' : '发布给顾客' }}
             </button>
           </div>
+          <p v-if="merchantApiConfigured && dirty" class="block-source-hint">修改尚未保存，保存后才能发布。</p>
           <p v-if="savedMessage" class="saved-message">{{ savedMessage }}</p>
           <p v-if="errorMessage" class="form-error">{{ errorMessage }}</p>
-        </section>
+        </fieldset>
 
         <aside class="phone-preview-wrap">
           <p>顾客端预览</p>
@@ -117,7 +123,7 @@
               :class="{ 'muted-preview': block.type === 'story' || block.type === 'notice' }"
             >
               <small>{{ block.title }}</small>
-              <div v-if="block.type === 'featured'" class="dish-row"><span /><span /><span /></div>
+              <p v-if="block.type === 'featured'">菜品信息暂不支持在此预览</p>
               <p v-else-if="block.type === 'storeInfo'">{{ currentStore?.storeName || '当前门店' }} · 营业信息</p>
               <p v-else>{{ block.content }}</p>
             </section>
@@ -131,6 +137,11 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 
+import {
+  createDefaultStorefrontConfig,
+  storefrontTemplates as templates,
+  storefrontAccentColors as accentColors,
+} from '../../../../src/data/storefront-templates'
 import AdminShell from '../components/AdminShell.vue'
 import { merchantApiConfigured, merchantSession } from '../services/merchant-session'
 import {
@@ -140,38 +151,19 @@ import {
 } from '../services/storefront-service'
 
 const storageKey = 'ordio:merchant-admin:storefront-draft'
-const templates = [
-  { id: 'warm', name: '暖意食堂', description: '家常菜、简餐和社区餐厅', defaultAccent: '#b85c38' },
-  { id: 'fresh', name: '清新自然', description: '轻食、茶饮和健康餐', defaultAccent: '#2f7d57' },
-  { id: 'bold', name: '醒目招牌', description: '快餐、小吃和夜宵门店', defaultAccent: '#e08a16' },
-]
-const accentColors = ['#b85c38', '#2f7d57', '#e08a16', '#8d6a22', '#3c5a7d', '#7a4b78']
-const defaultDraft = {
-  templateId: 'warm',
-  accentColor: '#b85c38',
-  hero: {
-    eyebrow: '今日好味',
-    title: '认真做一顿热乎饭',
-    subtitle: '现点现做，欢迎入座。',
-    buttonText: '开始点餐',
-  },
-  blocks: [
-    { id: 'block-notice', type: 'notice', visible: true, title: '门店公告', content: '高峰时段请耐心等候，感谢理解。' },
-    { id: 'block-featured', type: 'featured', visible: true, title: '本店招牌', content: '' },
-    { id: 'block-story', type: 'story', visible: true, title: '关于我们', content: '用当季食材和熟悉的味道，认真做好每一餐。' },
-    { id: 'block-store-info', type: 'storeInfo', visible: true, title: '到店信息', content: '' },
-  ],
-  featuredDishIds: [],
-}
-
-const draft = reactive(readDraft())
+const defaultDraft = createDefaultStorefrontConfig()
+const draft = reactive(merchantApiConfigured ? structuredClone(defaultDraft) : readDraft())
+const savedSnapshot = ref(JSON.stringify(draft))
+const dirty = computed(() => JSON.stringify(draft) !== savedSnapshot.value)
+const loading = ref(merchantApiConfigured)
+const ready = ref(!merchantApiConfigured)
 const savedMessage = ref('')
 const errorMessage = ref('')
 const revision = ref(0)
 const saving = ref(false)
 const publishing = ref(false)
 const currentStore = computed(() => merchantSession.memberships[0] || null)
-const visibleBlocks = computed(() => draft.blocks.filter((block) => block.visible))
+const visibleBlocks = computed(() => draft.blocks.filter((block) => block.visible && (block.type !== 'featured' || draft.featuredDishIds.length)))
 
 onMounted(loadDraft)
 
@@ -192,33 +184,46 @@ function moveBlock(index, offset) {
 }
 
 async function loadDraft() {
-  if (!merchantApiConfigured || !currentStore.value) {
+  if (!merchantApiConfigured) {
     return
   }
+  loading.value = true
+  ready.value = false
   errorMessage.value = ''
   try {
-    const result = await getStorefrontDraft(currentStore.value.storeId)
-    if (result?.config) {
-      Object.assign(draft, structuredClone(result.config))
-      revision.value = result.revision
+    if (!currentStore.value) {
+      throw new Error('当前账号没有可管理的门店')
     }
+    const result = await getStorefrontDraft(currentStore.value.storeId)
+    Object.assign(draft, structuredClone(result?.config || defaultDraft))
+    revision.value = result?.revision || 0
+    savedSnapshot.value = JSON.stringify(draft)
+    ready.value = true
   } catch (error) {
     errorMessage.value = error.message || '主页草稿读取失败'
+  } finally {
+    loading.value = false
   }
 }
 
 async function saveDraft() {
+  if (!ready.value || saving.value || publishing.value) {
+    return
+  }
   saving.value = true
   savedMessage.value = ''
   errorMessage.value = ''
+  const snapshot = JSON.stringify(draft)
   try {
     if (!merchantApiConfigured) {
-      localStorage.setItem(storageKey, JSON.stringify(draft))
-      savedMessage.value = '草稿已保存在当前浏览器，仅用于管理端迁移开发。'
+      localStorage.setItem(storageKey, snapshot)
+      savedSnapshot.value = snapshot
+      savedMessage.value = '草稿已保存在当前浏览器，未同步到顾客小程序。'
       return
     }
-    const result = await saveStorefrontDraft(currentStore.value.storeId, structuredClone(draft), revision.value)
+    const result = await saveStorefrontDraft(currentStore.value.storeId, JSON.parse(snapshot), revision.value)
     revision.value = result.revision
+    savedSnapshot.value = snapshot
     savedMessage.value = `草稿已保存，版本 ${result.revision}`
   } catch (error) {
     errorMessage.value = error.message || '主页草稿保存失败'
@@ -228,6 +233,9 @@ async function saveDraft() {
 }
 
 async function publishDraft() {
+  if (!merchantApiConfigured || !ready.value || dirty.value || !revision.value || saving.value || publishing.value) {
+    return
+  }
   publishing.value = true
   savedMessage.value = ''
   errorMessage.value = ''
@@ -243,9 +251,7 @@ async function publishDraft() {
 
 function resetDraft() {
   Object.assign(draft, structuredClone(defaultDraft))
-  revision.value = 0
-  localStorage.removeItem(storageKey)
-  savedMessage.value = ''
+  savedMessage.value = '已恢复初始配置，保存后生效。'
 }
 
 function readDraft() {
@@ -266,3 +272,13 @@ function readDraft() {
   }
 }
 </script>
+
+<style scoped>
+fieldset.builder-controls {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+</style>
+
